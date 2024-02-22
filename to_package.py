@@ -314,6 +314,8 @@ for v in sorted(known_versions, reverse=True):
 if known_versions:
     print()
 
+first_variant_printed = False
+
 # Then the depends_on bits.
 if dep_to_when:
     print('with default_args(deptype=("build", "run")):')
@@ -342,6 +344,11 @@ if dep_to_when:
 
         when_spec = Spec() if when_spec is None else when_spec
         when_spec.versions.intersect(when)
+
+        # If this is the first when spec with variants, print a newline
+        if when_spec.variants and not first_variant_printed:
+            print()
+            first_variant_printed = True
 
         if when_spec == Spec("@:"):
             when_str = ""

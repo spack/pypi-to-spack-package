@@ -63,6 +63,7 @@ with default_args(deptype=("build", "run")):
     depends_on("py-typed-ast@1.4.2:", when="@22.10.0:23.3.0 ^python@:3.7")
     depends_on("py-typing-extensions@3.10.0.0:", when="@22.10.0:23.7.0 ^python@:3.9")
     depends_on("py-typing-extensions@4.0.1:", when="@23.9.0: ^python@:3.10")
+
     depends_on("py-colorama@0.4.3:", when="@22.10.0:+colorama")
     depends_on("py-aiohttp@3.7.4:", when="@22.10.0:23.11.0+d")
     depends_on("py-ipython@7.8.0:", when="@22.10.0:+jupyter")

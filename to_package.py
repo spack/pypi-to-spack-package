@@ -281,6 +281,14 @@ for key, when in dep_to_when.items():
     new_list.append(vn.VersionRange(lo, hi))
     when.versions = new_list
 
+# First dump the versions. TODO: checksums.
+for v in sorted(known_versions, reverse=True):
+    print(f'version("{v}")')
+
+if known_versions:
+    print()
+
+# Then the depends_on bits.
 if dep_to_when:
     print('with default_args(deptype=("build", "run")):')
     for k in sorted(

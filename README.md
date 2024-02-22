@@ -18,7 +18,7 @@ Convert Python PyPI entries to Spack `package.py`
 3. Hit "Save Results" > "JSONL" and download from Google drive.
 4. Run `python3 to_sqlite.py <path to json file>` to convert to sqlite.
 5. Install `packaging` if not installed already
-5. Run `spack-python to_package.py black` to convert to `package.py`.
+5. Run `spack-python to_package.py <pkg>` to convert to `package.py`.
 
 ## Example
 

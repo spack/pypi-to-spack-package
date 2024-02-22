@@ -29,6 +29,26 @@ $ spack-python to_package.py black
 outputs
 
 ```python
+version("24.2.0")
+version("24.1.1")
+version("24.1.0")
+version("23.12.1")
+version("23.12.0")
+version("23.11.0")
+version("23.10.1")
+version("23.10.0")
+version("23.9.1")
+version("23.9.0")
+version("23.7.0")
+version("23.3.0")
+version("23.1.0")
+version("22.12.0")
+version("22.10.0")
+version("22.8.0")
+version("22.6.0")
+version("22.3.0")
+version("22.1.0")
+
 with default_args(deptype=("build", "run")):
     depends_on("python@3.6.2:", when="@22.1.0:22.8.0")
     depends_on("python@3.7:", when="@22.10.0:23.3.0")
@@ -38,38 +58,28 @@ with default_args(deptype=("build", "run")):
     depends_on("py-packaging@22.0:", when="@23.1.0:")
     depends_on("py-pathspec@0.9.0:", when="@22.10.0:")
     depends_on("py-platformdirs@2:", when="@22.10.0:")
-    depends_on("py-tomli@1.1.0:", when="@23.1.0: ^python@:3.10")
     depends_on("py-tomli@1.1.0:", when="@22.10.0:22.12.0 ^python@:3.11.0a6")
+    depends_on("py-tomli@1.1.0:", when="@23.1.0: ^python@:3.10")
     depends_on("py-typed-ast@1.4.2:", when="@22.10.0:23.3.0 ^python@:3.7")
     depends_on("py-typing-extensions@3.10.0.0:", when="@22.10.0:23.7.0 ^python@:3.9")
     depends_on("py-typing-extensions@4.0.1:", when="@23.9.0: ^python@:3.10")
-
-    # marker: (sys_platform == "win32" and implementation_name == "pypy") and extra == "d"
-    # depends_on("py-aiohttp@3.7.4:3.8,3.9.1:", when="@23.12.1:")
+    depends_on("py-colorama@0.4.3:", when="@22.10.0:+colorama")
+    depends_on("py-aiohttp@3.7.4:", when="@22.10.0:23.11.0+d")
+    depends_on("py-ipython@7.8.0:", when="@22.10.0:+jupyter")
+    depends_on("py-tokenize-rt@3.2.0:", when="@22.10.0:+jupyter")
+    depends_on("py-uvloop@0.15.2:", when="@22.10.0:+uvloop")
 
     # marker: sys_platform == "win32" and implementation_name == "pypy" and extra == "d"
     # depends_on("py-aiohttp@3.7.4:3.8,3.9.1:", when="@23.12.0")
 
-    # marker: extra == "d"
-    # depends_on("py-aiohttp@3.7.4:", when="@22.10.0:23.11.0")
-
-    # marker: (sys_platform != "win32" or implementation_name != "pypy") and extra == "d"
-    # depends_on("py-aiohttp@3.7.4:", when="@23.12.1:")
+    # marker: (sys_platform == "win32" and implementation_name == "pypy") and extra == "d"
+    # depends_on("py-aiohttp@3.7.4:3.8,3.9.1:", when="@23.12.1:")
 
     # marker: sys_platform != "win32" or implementation_name != "pypy" and extra == "d"
     # depends_on("py-aiohttp@3.7.4:", when="@23.12.0")
 
-    # marker: extra == "colorama"
-    # depends_on("py-colorama@0.4.3:", when="@22.10.0:")
-
-    # marker: extra == "jupyter"
-    # depends_on("py-ipython@7.8.0:", when="@22.10.0:")
-
-    # marker: extra == "jupyter"
-    # depends_on("py-tokenize-rt@3.2.0:", when="@22.10.0:")
-
-    # marker: extra == "uvloop"
-    # depends_on("py-uvloop@0.15.2:", when="@22.10.0:")
+    # marker: (sys_platform != "win32" or implementation_name != "pypy") and extra == "d"
+    # depends_on("py-aiohttp@3.7.4:", when="@23.12.1:")
 ```
 
 ## License

@@ -14,6 +14,7 @@ import packaging.version as pv
 from spack.version.version_types import VersionStrComponent, prev_version_str_component
 from typing import Dict, Tuple, List
 from collections import defaultdict
+from spack.spec import Spec
 
 import spack.version as vn
 
@@ -89,45 +90,29 @@ def specifier_to_spack_version(s: Specifier):
     return v
 
 
-def _eval_constraint(node: tuple):
-    # Operator
-    variable, comparison, value = node
-    assert isinstance(variable, Variable)
-    assert isinstance(comparison, Op)
-    assert isinstance(value, Value)
-
-    if (
-        variable.value == "implementation_name"
-        and comparison.value == "=="
-        and value.value == "cpython"
-    ):
-        return vn.any_version
-
-    if variable.value not in ("python_version", "python_full_version"):
-        return None
-
+def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
     # Do everything in terms of ranges for simplicity.
-    if comparison.value == "==":
-        v = vn.StandardVersion.from_string(value.value)
+    if op == "==":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(v, v)])
-    elif comparison.value == ">":
-        v = vn.StandardVersion.from_string(value.value)
+    elif op == ">":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())]
         )
-    elif comparison.value == ">=":
-        v = vn.StandardVersion.from_string(value.value)
+    elif op == ">=":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
-    elif comparison.value == "<":
-        v = vn.StandardVersion.from_string(value.value)
+    elif op == "<":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
         )
-    elif comparison.value == "<=":
-        v = vn.StandardVersion.from_string(value.value)
+    elif op == "<=":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(vn.StandardVersion.typemin(), v)])
-    elif comparison.value == "!=":
-        v = vn.StandardVersion.from_string(value.value)
+    elif op == "!=":
+        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [
                 vn.VersionRange(
@@ -141,13 +126,46 @@ def _eval_constraint(node: tuple):
         return None
 
 
+def _eval_constraint(node: tuple) -> Optional[Spec]:
+    # Operator
+    variable, op, value = node
+    assert isinstance(variable, Variable)
+    assert isinstance(op, Op)
+    assert isinstance(value, Value)
+
+    # We only support cpython, so delete since trivial.
+    if (
+        variable.value == "implementation_name"
+        and op.value == "=="
+        and value.value == "cpython"
+    ):
+        return Spec("^python")
+
+    # Turn extra into variants
+    if variable.value == "extra" and op.value == "==":
+        return Spec(f"+{value.value}")
+
+    # Otherwise put a constraint on ^python.
+    if variable.value not in ("python_version", "python_full_version"):
+        return None
+
+    versions = _eval_python_version_marker(op.value, value.value)
+
+    if versions is None:
+        return None
+
+    spec = Spec("^python")
+    spec["python"].versions = versions
+    return spec
+
+
 def _eval_node(node):
     if isinstance(node, tuple):
         return _eval_constraint(node)
-    return _marker_to_python_constraint(node)
+    return _marker_to_spec(node)
 
 
-def _marker_to_python_constraint(node) -> Optional[vn.VersionList]:
+def _marker_to_spec(node) -> Optional[Spec]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -177,14 +195,22 @@ def _marker_to_python_constraint(node) -> Optional[vn.VersionList]:
         if rhs is None:
             return None
         if op == "and":
-            lhs.intersect(rhs)
+            lhs.constrain(rhs)
         else:
-            lhs.add(rhs)
+            # Only support union of ^python versions.
+            if lhs.variants or rhs.variants:
+                return None
+            if rhs.dependencies("python") and not lhs.dependencies("python"):
+                lhs.constrain(rhs)
+            else:
+                lhs.dependencies("python").versions.add(
+                    rhs.dependencies("python").versions
+                )
     return lhs
 
 
-def marker_to_python_constraint(m: Marker) -> Optional[vn.VersionList]:
-    return _marker_to_python_constraint(m._markers)
+def marker_to_spec(m: Marker) -> Optional[Spec]:
+    return _marker_to_spec(m._markers)
 
 
 def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
@@ -230,16 +256,16 @@ for name, version, requires_dist, requires_python in result:
 
         # Translate markers to ^python@ constraints if possible.
         if r.marker is not None:
-            python_version = marker_to_python_constraint(r.marker)
-            if python_version is not None:
+            marker_when_spec = marker_to_spec(r.marker)
+            if marker_when_spec is not None:
                 r.marker = None
         else:
-            python_version = vn.any_version
+            marker_when_spec = None
 
         key = (
             r.name,
             version_list_from_specifier(r.specifier),
-            python_version,
+            marker_when_spec,
             r.marker,
             frozenset(r.extras),
         )
@@ -293,27 +319,35 @@ if dep_to_when:
     print('with default_args(deptype=("build", "run")):')
     for k in sorted(
         dep_to_when.keys(),
-        key=lambda x: (bool(x[3]), bool(x[4]), x[0] != "python", x[0], x[1], x[2]),
+        key=lambda x: (
+            bool(x[3]),
+            bool(x[4]),
+            x[0] != "python",
+            x[2] and x[2].variants,
+            x[0],
+            x[1],
+            x[2],
+        ),
     ):
-        name, version_list, python_version, marker, extras = k
+        name, version_list, when_spec, marker, extras = k
         when = dep_to_when[k]
         version_list_str = "" if version_list == vn.any_version else f"@{version_list}"
 
         if marker is not None or extras:
-            print("\n")
+            print()
             if marker is not None:
                 print(f"    # marker: {marker}")
             if extras:
                 print(f"    # extras: {','.join(extras)}")
 
-        if python_version and python_version != vn.any_version:
-            when_str = f"@{when} ^python@{python_version}"
-        else:
-            when_str = f"@{when}"
+        when_spec = Spec() if when_spec is None else when_spec
+        when_spec.versions.intersect(when)
 
-        variants = f' {" ".join(f"+{x}" for x in extras)}' if extras else ""
+        if when_spec == Spec("@:"):
+            when_str = ""
+        else:
+            when_str = f', when="{when_spec}"'
+
         comment = "# " if marker else ""
         spack_name = f"py-{name}" if name != "python" else "python"
-        print(
-            f'    {comment}depends_on("{spack_name}{version_list_str}{variants}", when="{when_str}")'
-        )
+        print(f'    {comment}depends_on("{spack_name}{version_list_str}"{when_str})')

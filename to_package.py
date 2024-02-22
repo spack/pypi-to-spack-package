@@ -296,19 +296,36 @@ for key, when in dep_to_when.items():
         lo = vn.StandardVersion.typemin()
 
     while j < len(when):
-        if known_versions[i] != when[j]:
-            new_list.append(vn.VersionRange(lo, when[j - 1]))
+        if known_versions[i] == when[j]:
+            # Consecutive: absorb in range.
+            i += 1
+        else:
+            # Not consecutive: emit a range.
+
+            # If the last entry is say 1.2.3, and the next known version 1.3.0, we'd like to
+            # use @:1.2 instead of @:1.2.3, since it leads to smaller diffs if a patch version
+            # is added later.
+            last = when[j - 1]
+            version_range = vn.VersionRange(lo, last.up_to(len(last) - 1))
+            if known_versions[i].satisfies(version_range):
+                version_range = vn.VersionRange(lo, last)
+            new_list.append(version_range)
             lo = when[j]
             i = known_versions.index(lo) + 1
-        else:
-            i += 1
 
         j += 1
 
     # Similarly, if the last entry corresponds to the last known version,
     # assume the dependency continues to be used: [x, inf).
-    hi = vn.StandardVersion.typemax() if i == len(known_versions) else when[j - 1]
-    new_list.append(vn.VersionRange(lo, hi))
+    if i == len(known_versions):
+        version_range = vn.VersionRange(lo, vn.StandardVersion.typemax())
+    else:
+        last = when[j - 1]
+        version_range = vn.VersionRange(lo, last.up_to(len(last) - 1))
+        if known_versions[i].satisfies(version_range):
+            version_range = vn.VersionRange(lo, last)
+
+    new_list.append(version_range)
     when.versions = new_list
 
 # First dump the versions. TODO: checksums.

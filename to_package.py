@@ -21,12 +21,13 @@ conn = sqlite3.connect("data.db")
 
 c = conn.cursor()
 
+# TODO: deal with re-uploads: should use upload_time. Now we just use GROUP BY.
 result = c.execute(
     """
-SELECT *
+SELECT name, version, requires_dist, requires_python 
 FROM packages
 WHERE name LIKE ?
-""",
+GROUP BY version""",
     (sys.argv[1],),
 )
 
@@ -56,7 +57,12 @@ def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
 
 
 def specifier_to_spack_version(s: Specifier):
-    v = vn.StandardVersion.from_string(s.version)
+    # I think 1.2.* is only allowed with operators != and ==, in which case it can follow the
+    # same code path.
+    if s.version.endswith(".*") and s.operator in ("!=", "=="):
+        v = vn.StandardVersion.from_string(s.version[:-2])
+    else:
+        v = vn.StandardVersion.from_string(s.version)
 
     if s.operator == ">=":
         return vn.VersionRange(v, vn.StandardVersion.typemax())
@@ -68,6 +74,8 @@ def specifier_to_spack_version(s: Specifier):
         return vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))
     elif s.operator == "~=":
         return vn.VersionRange(v, v.up_to(len(v) - 1))
+    elif s.operator == "==":
+        return vn.VersionRange(v, v)
     elif s.operator == "!=":
         return vn.VersionList(
             [

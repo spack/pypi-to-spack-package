@@ -292,10 +292,11 @@ if dep_to_when:
         version_list_str = "" if version_list == vn.any_version else f"@{version_list}"
 
         if marker is not None or extras:
+            print("\n")
             if marker is not None:
-                print(f"\n    # marker: {marker}")
+                print(f"    # marker: {marker}")
             if extras:
-                print(f"\n    # extras: {','.join(extras)}")
+                print(f"    # extras: {','.join(extras)}")
 
         if python_version and python_version != vn.any_version:
             when_str = f"@{when} ^python@{python_version}"

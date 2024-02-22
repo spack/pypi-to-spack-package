@@ -22,13 +22,12 @@ conn = sqlite3.connect("data.db")
 
 c = conn.cursor()
 
-# TODO: deal with re-uploads: should use upload_time. Now we just use GROUP BY.
 result = c.execute(
     """
-SELECT name, version, requires_dist, requires_python 
+SELECT name, version, requires_dist, requires_python, sha256 
 FROM packages
 WHERE name LIKE ?
-GROUP BY version""",
+ORDER BY upload_time DESC""",
     (sys.argv[1],),
 )
 
@@ -225,9 +224,9 @@ def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
 dep_to_when: Dict[
     Tuple[str, vn.VersionList, Optional[Marker], FrozenSet[str]], vn.VersionList
 ] = defaultdict(vn.VersionList)
-known_versions: List[vn.StandardVersion] = []
+version_to_shasum: Dict[vn.StandardVersion, str] = {}
 
-for name, version, requires_dist, requires_python in result:
+for name, version, requires_dist, requires_python, sha256_blob in result:
     # We skip alpha/beta/rc etc releases, cause Spack's version ordering for them is wrong.
     packaging_version = pv.parse(version)
     if (
@@ -238,7 +237,12 @@ for name, version, requires_dist, requires_python in result:
         continue
 
     spack_version = vn.StandardVersion.from_string(version)
-    known_versions.append(spack_version)
+
+    # Skip older uploads of identical versions.
+    if spack_version in version_to_shasum:
+        continue
+
+    version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
 
     if requires_python:
         # Add the python dependency separately
@@ -273,7 +277,7 @@ for name, version, requires_dist, requires_python in result:
         dep_to_when[key].add(spack_version)
 
 # Next, simplify a list of specific version to a range if they are consecutive.
-known_versions.sort()
+known_versions = sorted(version_to_shasum.keys())
 
 for key, when in dep_to_when.items():
     if when == vn.any_version:
@@ -309,7 +313,7 @@ for key, when in dep_to_when.items():
 
 # First dump the versions. TODO: checksums.
 for v in sorted(known_versions, reverse=True):
-    print(f'version("{v}")')
+    print(f'version("{v}", sha256="{version_to_shasum[v]}")')
 
 if known_versions:
     print()

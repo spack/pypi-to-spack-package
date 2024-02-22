@@ -8,10 +8,10 @@ Convert Python PyPI entries to Spack `package.py`
 2. Run the following query
 
    ```sql
-   SELECT name, version, requires_dist, requires_python
-   FROM `bigquery-public-data.pypi.distribution_metadata`
-   WHERE packagetype = "sdist"
-   ORDER BY upload_time DESC
+    SELECT name, version, requires_dist, requires_python, upload_time, sha256_digest
+    FROM `bigquery-public-data.pypi.distribution_metadata`
+    WHERE packagetype = "sdist"
+    ORDER BY upload_time DESC
    ```
 
    should produce about 5.5M rows.

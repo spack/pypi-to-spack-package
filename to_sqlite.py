@@ -6,6 +6,7 @@
 import sqlite3
 import json
 import sys
+from dateutil.parser import parse as dateparse
 
 json_file = sys.argv[1]
 
@@ -15,7 +16,14 @@ c = conn.cursor()
 c.execute(
     """
 CREATE TABLE IF NOT EXISTS packages
-(name TEXT, version TEXT, requires_dist TEXT, requires_python TEXT)
+(
+name TEXT NOT NULL,
+version TEXT NOT NULL,
+requires_dist TEXT,
+requires_python TEXT,
+upload_time DATETIME NOT NULL,
+sha256 BLOB(32) NOT NULL
+)
 """
 )
 
@@ -28,7 +36,7 @@ CREATE INDEX IF NOT EXISTS name_index ON packages (name)
 
 def insert(entries):
     c.executemany(
-        "INSERT INTO packages (name, version, requires_dist, requires_python) VALUES (?, ?, ?, ?)",
+        "INSERT INTO packages (name, version, requires_dist, requires_python, upload_time, sha256) VALUES (?, ?, ?, ?, ?, ?)",
         entries,
     )
     conn.commit()
@@ -39,12 +47,20 @@ with open(json_file, "rb") as f:
     for i, line in enumerate(f.readlines()):
         data = json.loads(line)
 
+        upload_time = data["upload_time"]
+
+        # should always be UTC
+        if upload_time.endswith(" UTC"):
+            upload_time = upload_time[:-4]
+
         entries.append(
             (
                 data["name"],
                 data["version"],
                 json.dumps(data.get("requires_dist", []), separators=(",", ":")),
                 data.get("requires_python", ""),
+                upload_time,
+                bytearray.fromhex(data.get("sha256_digest", "")),
             )
         )
 

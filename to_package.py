@@ -300,6 +300,3 @@ if dep_to_when:
         print(
             f'    {comment}depends_on("{spack_name}{version_list_str}{variants}", when="{when_str}")'
         )
-
-        if marker is not None or extras:
-            print()

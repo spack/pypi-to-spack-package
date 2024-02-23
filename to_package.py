@@ -24,9 +24,8 @@ c = conn.cursor()
 result = c.execute(
     """
 SELECT name, version, requires_dist, requires_python, sha256 
-FROM packages
-WHERE name LIKE ?
-ORDER BY upload_time DESC""",
+FROM versions
+WHERE name LIKE ?""",
     (sys.argv[1],),
 )
 

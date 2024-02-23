@@ -3,9 +3,10 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-import sqlite3
 import json
+import sqlite3
 import sys
+
 from dateutil.parser import parse as dateparse
 
 json_file = sys.argv[1]

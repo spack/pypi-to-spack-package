@@ -3,20 +3,19 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import json
 import sqlite3
 import sys
-import json
+from collections import defaultdict
+from typing import Dict, FrozenSet, List, Optional, Tuple
+
+import packaging.version as pv
+import spack.version as vn
+from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import Requirement
 from packaging.specifiers import Specifier, SpecifierSet
-from packaging.markers import Marker, Variable, Op, Value
-from typing import Optional, FrozenSet
-import packaging.version as pv
-from spack.version.version_types import VersionStrComponent, prev_version_str_component
-from typing import Dict, Tuple, List
-from collections import defaultdict
 from spack.spec import Spec
-
-import spack.version as vn
+from spack.version.version_types import VersionStrComponent, prev_version_str_component
 
 conn = sqlite3.connect("data.db")
 

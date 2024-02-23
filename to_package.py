@@ -21,6 +21,7 @@ conn = sqlite3.connect("data.db")
 
 c = conn.cursor()
 
+
 result = c.execute(
     """
 SELECT name, version, requires_dist, requires_python, sha256 
@@ -240,39 +241,54 @@ for name, version, requires_dist, requires_python, sha256_blob in result:
     if spack_version in version_to_shasum:
         continue
 
-    version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
+    try:
+        to_insert = []
+        if requires_python:
+            # Add the python dependency separately
+            to_insert.append(
+                (
+                    (
+                        "python",
+                        version_list_from_specifier(SpecifierSet(requires_python)),
+                        None,
+                        None,
+                        frozenset(),
+                    ),
+                    spack_version,
+                )
+            )
 
-    if requires_python:
-        # Add the python dependency separately
-        key = (
-            "python",
-            version_list_from_specifier(SpecifierSet(requires_python)),
-            None,
-            None,
-            frozenset(),
-        )
-        dep_to_when[key].add(spack_version)
+        for requirement_str in json.loads(requires_dist):
+            r = Requirement(requirement_str)
 
-    for requirement_str in json.loads(requires_dist):
-        r = Requirement(requirement_str)
+            # Translate markers to ^python@ constraints if possible.
+            if r.marker is not None:
+                marker_when_spec = marker_to_spec(r.marker)
+                if marker_when_spec is not None:
+                    r.marker = None
+            else:
+                marker_when_spec = None
 
-        # Translate markers to ^python@ constraints if possible.
-        if r.marker is not None:
-            marker_when_spec = marker_to_spec(r.marker)
-            if marker_when_spec is not None:
-                r.marker = None
-        else:
-            marker_when_spec = None
+            to_insert.append(
+                (
+                    (
+                        r.name,
+                        version_list_from_specifier(r.specifier),
+                        marker_when_spec,
+                        r.marker,
+                        frozenset(r.extras),
+                    ),
+                    spack_version,
+                )
+            )
 
-        key = (
-            r.name,
-            version_list_from_specifier(r.specifier),
-            marker_when_spec,
-            r.marker,
-            frozenset(r.extras),
-        )
+        # Delay registering a version until we know that it's valid.
+        for k, v in to_insert:
+            dep_to_when[k].add(v)
+        version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
+    except ValueError as e:
+        print(f"dropping version {spack_version}: {e}", file=sys.stderr)
 
-        dep_to_when[key].add(spack_version)
 
 # Next, simplify a list of specific version to a range if they are consecutive.
 known_versions = sorted(version_to_shasum.keys())

@@ -3,11 +3,13 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import defaultdict
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, Literal, Optional, Tuple, Union
 
 import packaging.version as pv
 import spack.version as vn
@@ -17,7 +19,18 @@ from packaging.specifiers import Specifier, SpecifierSet
 from spack.spec import Spec
 from spack.version.version_types import VersionStrComponent, prev_version_str_component
 
-conn = sqlite3.connect("data.db")
+parser = argparse.ArgumentParser(
+    prog="to_spack.py", description="Convert PyPI data to Spack data"
+)
+parser.add_argument("package", help="The package name on PyPI")
+parser.add_argument("--db", default="data.db", help="The database file to read from")
+args = parser.parse_args()
+
+if not os.path.exists(args.db):
+    print(f"Database file {args.db} does not exist", file=sys.stderr)
+    sys.exit(1)
+
+conn = sqlite3.connect(args.db)
 
 c = conn.cursor()
 
@@ -27,7 +40,7 @@ result = c.execute(
 SELECT name, version, requires_dist, requires_python, sha256 
 FROM versions
 WHERE name LIKE ?""",
-    (sys.argv[1],),
+    (args.package,),
 )
 
 
@@ -56,8 +69,9 @@ def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
 
 
 def specifier_to_spack_version(s: Specifier):
-    # I think 1.2.* is only allowed with operators != and ==, in which case it can follow the
-    # same code path.
+    # The "version" 1.2.* is only allowed with operators != and ==, in which case it can follow the
+    # same code path. However, the PyPI index is filled with >=1.2.* nonsense -- ignore it, it
+    # would error in the else branch anyways as * is not a valid version component in Spack.
     if s.version.endswith(".*") and s.operator in ("!=", "=="):
         v = vn.StandardVersion.from_string(s.version[:-2])
     else:
@@ -124,20 +138,16 @@ def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
         return None
 
 
-def _eval_constraint(node: tuple) -> Optional[Spec]:
+def _eval_constraint(node: tuple) -> Union[None, bool, Spec]:
     # Operator
     variable, op, value = node
     assert isinstance(variable, Variable)
     assert isinstance(op, Op)
     assert isinstance(value, Value)
 
-    # We only support cpython, so delete since trivial.
-    if (
-        variable.value == "implementation_name"
-        and op.value == "=="
-        and value.value == "cpython"
-    ):
-        return Spec("^python")
+    # Statically evaluate implementation_name, since all we support is Python
+    if variable.value == "implementation_name" and op.value == "==":
+        return value.value == "cpython"
 
     # Turn extra into variants
     if variable.value == "extra" and op.value == "==":
@@ -157,13 +167,13 @@ def _eval_constraint(node: tuple) -> Optional[Spec]:
     return spec
 
 
-def _eval_node(node):
+def _eval_node(node) -> Union[None, bool, Spec]:
     if isinstance(node, tuple):
         return _eval_constraint(node)
     return _marker_to_spec(node)
 
 
-def _marker_to_spec(node) -> Optional[Spec]:
+def _marker_to_spec(node) -> Union[None, bool, Spec]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -182,32 +192,53 @@ def _marker_to_spec(node) -> Optional[Spec]:
     assert isinstance(node, list) and len(node) > 0
 
     lhs = _eval_node(node[0])
+
+    # Unable to translate to Spack DSL.
     if lhs is None:
         return None
 
-    # reduce
+    # Reduce
     for i in range(2, len(node), 2):
         op = node[i - 1]
         assert op in ("and", "or")
         rhs = _eval_node(node[i])
+
+        # Unable to translate to Spack DSL.
         if rhs is None:
             return None
+
         if op == "and":
-            lhs.constrain(rhs)
-        else:
-            # Only support union of ^python versions.
-            if lhs.variants or rhs.variants:
-                return None
-            if rhs.dependencies("python") and not lhs.dependencies("python"):
+            if lhs is True or rhs is True:
+                lhs = rhs
+            elif lhs is False or rhs is False:
+                return False
+            else:  # Intersection of specs
                 lhs.constrain(rhs)
-            else:
-                lhs.dependencies("python").versions.add(
-                    rhs.dependencies("python").versions
+        elif op == "or":
+            if lhs is True or rhs is True:
+                return True
+            elif lhs is False:
+                lhs = rhs
+            elif rhs is not False:
+                # We can only take a union of Python versions, since that's a list. We can't take
+                # a union of other constraints, that translates to multiple depends_on
+                # statements.
+                if lhs.variants or rhs.variants:
+                    return None
+                lhs_python, rhs_python = lhs.dependencies("python"), rhs.dependencies(
+                    "python"
                 )
+                if not (lhs_python and rhs_python):
+                    return None
+                lhs_python[0].versions.add(rhs_python[0].versions)
     return lhs
 
 
-def marker_to_spec(m: Marker) -> Optional[Spec]:
+def marker_to_spec(m: Marker) -> Union[bool, None, Spec]:
+    """Evaluate the marker expression tree either (1) as a Spack spec if possible, (2) statically
+    as True or False given that we only support cpython, (3) None if we can't translate it into
+    Spack DSL."""
+    # TODO: simplify expression we can evaluate statically partially.
     return _marker_to_spec(m._markers)
 
 
@@ -264,7 +295,15 @@ for name, version, requires_dist, requires_python, sha256_blob in result:
             # Translate markers to ^python@ constraints if possible.
             if r.marker is not None:
                 marker_when_spec = marker_to_spec(r.marker)
+                if marker_when_spec is False:
+                    # Statically evaluate to False: do not emit depends_on.
+                    continue
+                elif marker_when_spec is True:
+                    # Statically evaluated to True: emit unconditional depends_on.
+                    r.marker = None
+                    marker_when_spec = None
                 if marker_when_spec is not None:
+                    # Translated to a Spec: conditional depends_on.
                     r.marker = None
             else:
                 marker_when_spec = None

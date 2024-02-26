@@ -266,10 +266,13 @@ def dep_sorting_key(dep):
     )
 
 
-def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
-    dep_to_when: Dict[
-        Tuple[str, vn.VersionList, Optional[Marker], FrozenSet[str]], vn.VersionList
-    ] = defaultdict(vn.VersionList)
+DepToWhen = Tuple[str, vn.VersionList, Optional[Marker], FrozenSet[str]]
+
+
+def populate(
+    name: str, sqlite_cursor: sqlite3.Cursor
+) -> Tuple[Dict[vn.StandardVersion, str], Dict[DepToWhen, vn.VersionList]]:
+    dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
     for (
         version,
@@ -408,8 +411,15 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
 
         new_list.append(version_range)
         when.versions = new_list
+    return version_to_shasum, dep_to_when
 
-    # First dump the versions. TODO: checksums.
+
+def print_package(
+    version_to_shasum: Dict[vn.StandardVersion, str],
+    dep_to_when: Dict[DepToWhen, vn.VersionList],
+) -> None:
+    known_versions = sorted(version_to_shasum.keys())
+
     for v in sorted(known_versions, reverse=True):
         print(f'    version("{v}", sha256="{version_to_shasum[v]}")')
 
@@ -447,9 +457,6 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
             dep_spec = Spec(f"{pkg_name} {extras_variants}")
             dep_spec.versions = version_list
             print(f'        {comment}depends_on("{dep_spec}"{when_str})')
-
-    # Return the possible dependency names
-    return [k[0] for k in dep_to_when.keys()]
 
 
 def get_possible_deps(
@@ -518,7 +525,8 @@ if __name__ == "__main__":
 
     if args.command == "generate":
         if not args.recursive:
-            generate(args.package, sqlite_cursor)
+            version_to_shasum, dep_to_when = populate(args.package, sqlite_cursor)
+            print_package(version_to_shasum, dep_to_when)
         else:
             seen = set()
             queue = [args.package]
@@ -529,7 +537,9 @@ if __name__ == "__main__":
                 seen.add(package)
                 print()
                 print(f"{package}")
-                queue.extend(generate(package, sqlite_cursor))
+                version_to_shasum, dep_to_when = populate(package, sqlite_cursor)
+                print_package(version_to_shasum, dep_to_when)
+                queue.extend(key[0] for key in dep_to_when.keys())
     elif args.command == "tree":
         seen = set()
         get_possible_deps(args.package, sqlite_cursor, seen)

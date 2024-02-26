@@ -183,25 +183,27 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
 
     lhs = _eval_node(node[0], drop_extras_re)
 
-    # Reduce
     for i in range(2, len(node), 2):
+        # Actually op should be constant: x and y and z. we don't assert it here.
         op = node[i - 1]
         assert op in ("and", "or")
-        # TODO: short-circuit evaluation.
-        rhs = _eval_node(node[i], drop_extras_re)
-
         if op == "and":
-            if lhs is False or rhs is False:
-                print(node, "evaluated to false", lhs, rhs)
+            if lhs is False:
+                return False
+            rhs = _eval_node(node[i], drop_extras_re)
+            if rhs is False:
                 return False
             elif lhs is None or rhs is None:
                 lhs = None
-            if lhs is True or rhs is True:
+            elif lhs is True:
                 lhs = rhs
-            else:  # Intersection of specs
+            elif rhs is not True:  # Intersection of specs
                 lhs.constrain(rhs)
         elif op == "or":
-            if lhs is True or rhs is True:
+            if lhs is True:
+                return True
+            rhs = _eval_node(node[i], drop_extras_re)
+            if rhs is True:
                 return True
             elif lhs is None or rhs is None:
                 lhs = None
@@ -212,10 +214,10 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
                 # multiple depends_on statements -- not supported yet.
                 if lhs.variants or rhs.variants:
                     return None
-                lhs_p, rhs_p = lhs.dependencies("python"), rhs.dependencies("python")
-                if not (lhs_p and rhs_p):
+                p_lhs, p_rhs = lhs.dependencies("python"), rhs.dependencies("python")
+                if not (p_lhs and p_rhs):
                     return None
-                lhs_p[0].versions.add(rhs_p[0].versions)
+                p_lhs[0].versions.add(p_rhs[0].versions)
     return lhs
 
 

@@ -117,6 +117,9 @@ def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
 
 
 def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spec]:
+    # TODO: os_name, sys_platform, platform_machine, platform_release, platform_system,
+    # platform_version, implementation_version
+
     # Operator
     variable, op, value = node
     assert isinstance(variable, Variable)
@@ -129,12 +132,14 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
             return value.value == "cpython"
         elif op.value == "!=":
             return value.value != "cpython"
+        return None
 
     if variable.value == "platform_python_implementation":
         if op.value == "==":
             return value.value.lower() == "cpython"
         elif op.value == "!=":
             return value.value.lower() != "cpython"
+        return None
 
     try:
         if variable.value == "extra":

@@ -272,14 +272,13 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
     ] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
     for (
-        name,
         version,
         requires_dist,
         requires_python,
         sha256_blob,
     ) in sqlite_cursor.execute(
         """
-    SELECT name, version, requires_dist, requires_python, sha256 
+    SELECT version, requires_dist, requires_python, sha256 
     FROM versions
     WHERE name = ?""",
         (name,),
@@ -356,7 +355,7 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
                 dep_to_when[k].add(v)
             version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
         except ValueError as e:
-            print(f"dropping version {spack_version}: {e}", file=sys.stderr)
+            print(f"{name}: drop v{spack_version} due to: {e}", file=sys.stderr)
 
     # Next, simplify a list of specific version to a range if they are consecutive.
     known_versions = sorted(version_to_shasum.keys())

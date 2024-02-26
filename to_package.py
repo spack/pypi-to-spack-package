@@ -21,6 +21,9 @@ from spack.parser import SpecSyntaxError
 from spack.spec import Spec
 from spack.version.version_types import VersionStrComponent, prev_version_str_component
 
+# If a marker on python version satisfies this range, we statically evaluate it as true.
+UNSUPPORTED_PYTHON = vn.from_string(":3.6")
+
 
 def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
     """Translate Specifier <x into a Spack range upperbound :y"""
@@ -160,6 +163,9 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
 
     if versions is None:
         return None
+
+    if versions.satisfies(UNSUPPORTED_PYTHON):
+        return False
 
     spec = Spec("^python")
     spec.dependencies("python")[0].versions = versions
@@ -406,7 +412,7 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
 
     # First dump the versions. TODO: checksums.
     for v in sorted(known_versions, reverse=True):
-        print(f'version("{v}", sha256="{version_to_shasum[v]}")')
+        print(f'    version("{v}", sha256="{version_to_shasum[v]}")')
 
     if known_versions:
         print()
@@ -415,13 +421,13 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
 
     # Then the depends_on bits.
     if dep_to_when:
-        print('with default_args(deptype=("build", "run")):')
+        print('    with default_args(deptype=("build", "run")):')
         for k in sorted(dep_to_when.keys(), key=dep_sorting_key):
             name, version_list, when_spec, marker, extras = k
             when = dep_to_when[k]
 
             if marker is not None:
-                print(f"    # marker: {marker}")
+                print(f"        # marker: {marker}")
 
             when_spec = Spec() if when_spec is None else when_spec
             when_spec.versions.intersect(when)
@@ -441,7 +447,7 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
             extras_variants = "".join(f"+{v}" for v in extras)
             dep_spec = Spec(f"{pkg_name} {extras_variants}")
             dep_spec.versions = version_list
-            print(f'    {comment}depends_on("{dep_spec}"{when_str})')
+            print(f'        {comment}depends_on("{dep_spec}"{when_str})')
 
     # Return the possible dependency names
     return [k[0] for k in dep_to_when.keys()]

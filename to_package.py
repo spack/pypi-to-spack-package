@@ -264,7 +264,7 @@ def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
         """
     SELECT name, version, requires_dist, requires_python, sha256 
     FROM versions
-    WHERE name LIKE ?""",
+    WHERE name = ?""",
         (name,),
     ):
         # We skip alpha/beta/rc etc releases, cause Spack's version ordering for them is wrong.
@@ -502,7 +502,7 @@ if __name__ == "__main__":
 
     if args.command == "generate":
         if not args.recursive:
-            generate(args.package, sqlite_cursor, set())
+            generate(args.package, sqlite_cursor)
         else:
             seen = set()
             queue = [args.package]
@@ -513,7 +513,7 @@ if __name__ == "__main__":
                 seen.add(package)
                 print()
                 print(f"{package}")
-                queue.extend(generate(package, sqlite_cursor, set()))
+                queue.extend(generate(package, sqlite_cursor))
     elif args.command == "tree":
         seen = set()
         get_possible_deps(args.package, sqlite_cursor, seen)

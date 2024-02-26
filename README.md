@@ -20,6 +20,12 @@ Convert Python PyPI entries to Spack `package.py`
 5. Install `packaging` if not installed already
 5. Run `spack-python to_package.py <pkg>` to convert to `package.py`.
 
+## TODO
+
+- [ ] Translate name in PyPI to Spack name
+- [ ] Emit `variant(...)` statements
+- [ ] Drop unused variants
+
 ## Example
 
 ```console

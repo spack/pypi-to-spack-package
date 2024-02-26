@@ -134,15 +134,16 @@ def _eval_constraint(
 
     try:
         if variable.value == "extra":
+            drop_extra = drop_extras_re.match(value.value)
             if op.value == "==":
-                return False if drop_extras_re.match(value.value) else Spec(f"+{value.value}")
+                return False if drop_extra else Spec(f"+{value.value}")
             elif op.value == "!=":
-                return True if drop_extras_re.match(value.value) else Spec(f"~{value.value}")
+                return True if drop_extra else Spec(f"~{value.value}")
     except SpecSyntaxError as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None
 
-    # Otherwise put a constraint on ^python.
+    # Otherwise we only know how to handle constraints on the Python version.
     if variable.value not in ("python_version", "python_full_version"):
         return None
 

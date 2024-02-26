@@ -133,12 +133,11 @@ def _eval_constraint(
             return value.value != "cpython"
 
     try:
-        if variable.value == "extra" and op.value == "==":
-            # Evaluate extra == "test*" expressions statically as False.
-            if drop_extras_re.match(value.value):
-                return False
-            # Otherwise turn into a Spack variant.
-            return Spec(f"+{value.value}")
+        if variable.value == "extra":
+            if op.value == "==":
+                return False if drop_extras_re.match(value.value) else Spec(f"+{value.value}")
+            elif op.value == "!=":
+                return True if drop_extras_re.match(value.value) else Spec(f"~{value.value}")
     except SpecSyntaxError as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None

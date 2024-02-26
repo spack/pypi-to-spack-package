@@ -123,12 +123,18 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
     assert isinstance(op, Op)
     assert isinstance(value, Value)
 
-    # Statically evaluate implementation_name, since all we support is Python
+    # Statically evaluate implementation name, since all we support is cpython
     if variable.value == "implementation_name":
         if op.value == "==":
             return value.value == "cpython"
         elif op.value == "!=":
             return value.value != "cpython"
+
+    if variable.value == "platform_python_implementation":
+        if op.value == "==":
+            return value.value.lower() == "cpython"
+        elif op.value == "!=":
+            return value.value.lower() != "cpython"
 
     try:
         if variable.value == "extra":

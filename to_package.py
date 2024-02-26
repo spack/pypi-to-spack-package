@@ -116,9 +116,7 @@ def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
         return None
 
 
-def _eval_constraint(
-    node: tuple, drop_extras_re: re.Pattern
-) -> Union[None, bool, Spec]:
+def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spec]:
     # Operator
     variable, op, value = node
     assert isinstance(variable, Variable)
@@ -134,11 +132,11 @@ def _eval_constraint(
 
     try:
         if variable.value == "extra":
-            drop_extra = drop_extras_re.match(value.value)
+            has_extra = value.value in has_extras
             if op.value == "==":
-                return False if drop_extra else Spec(f"+{value.value}")
+                return Spec(f"+{value.value}") if has_extra else False
             elif op.value == "!=":
-                return True if drop_extra else Spec(f"~{value.value}")
+                return Spec(f"~{value.value}") if has_extra else True
     except SpecSyntaxError as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None
@@ -157,13 +155,13 @@ def _eval_constraint(
     return spec
 
 
-def _eval_node(node, drop_extras_re: re.Pattern) -> Union[None, bool, Spec]:
+def _eval_node(node, has_extras: Set[str]) -> Union[None, bool, Spec]:
     if isinstance(node, tuple):
-        return _eval_constraint(node, drop_extras_re)
-    return _marker_to_spec(node, drop_extras_re)
+        return _eval_constraint(node, has_extras)
+    return _marker_to_spec(node, has_extras)
 
 
-def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool, Spec]:
+def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -181,7 +179,7 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
 
     assert isinstance(node, list) and len(node) > 0
 
-    lhs = _eval_node(node[0], drop_extras_re)
+    lhs = _eval_node(node[0], has_extras)
 
     for i in range(2, len(node), 2):
         # Actually op should be constant: x and y and z. we don't assert it here.
@@ -190,7 +188,7 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
         if op == "and":
             if lhs is False:
                 return False
-            rhs = _eval_node(node[i], drop_extras_re)
+            rhs = _eval_node(node[i], has_extras)
             if rhs is False:
                 return False
             elif lhs is None or rhs is None:
@@ -202,7 +200,7 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
         elif op == "or":
             if lhs is True:
                 return True
-            rhs = _eval_node(node[i], drop_extras_re)
+            rhs = _eval_node(node[i], has_extras)
             if rhs is True:
                 return True
             elif lhs is None or rhs is None:
@@ -221,12 +219,12 @@ def _marker_to_spec(node: list, drop_extras_re: re.Pattern) -> Union[None, bool,
     return lhs
 
 
-def marker_to_spec(m: Marker, drop_extras_re: re.Pattern) -> Union[bool, None, Spec]:
+def marker_to_spec(m: Marker, has_extras: Set[str]) -> Union[bool, None, Spec]:
     """Evaluate the marker expression tree either (1) as a Spack spec if possible, (2) statically
     as True or False given that we only support cpython, (3) None if we can't translate it into
     Spack DSL."""
     # TODO: simplify expression we can evaluate statically partially.
-    return _marker_to_spec(m._markers, drop_extras_re)
+    return _marker_to_spec(m._markers, has_extras)
 
 
 def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
@@ -238,9 +236,20 @@ def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
     return versions
 
 
-def generate(
-    name: str, sqlite_cursor: sqlite3.Cursor, drop_extras_re: re.Pattern
-) -> None:
+def dep_sorting_key(dep):
+    """Sensible ordering key when emitting depends_on statements."""
+    name, version_list, when_spec, marker, extras = dep
+    return (
+        bool(marker),
+        name != "python",
+        when_spec and when_spec.variants,
+        name,
+        version_list,
+        when_spec,
+    )
+
+
+def generate(name: str, sqlite_cursor: sqlite3.Cursor) -> None:
     dep_to_when: Dict[
         Tuple[str, vn.VersionList, Optional[Marker], FrozenSet[str]], vn.VersionList
     ] = defaultdict(vn.VersionList)
@@ -298,7 +307,7 @@ def generate(
 
                 # Translate markers to ^python@ constraints if possible.
                 if r.marker is not None:
-                    marker_when_spec = marker_to_spec(r.marker, drop_extras_re)
+                    marker_when_spec = marker_to_spec(r.marker, set())
                     if marker_when_spec is False:
                         # Statically evaluate to False: do not emit depends_on.
                         continue
@@ -396,30 +405,12 @@ def generate(
     # Then the depends_on bits.
     if dep_to_when:
         print('with default_args(deptype=("build", "run")):')
-        for k in sorted(
-            dep_to_when.keys(),
-            key=lambda x: (
-                bool(x[3]),
-                bool(x[4]),
-                x[0] != "python",
-                x[2] and x[2].variants,
-                x[0],
-                x[1],
-                x[2],
-            ),
-        ):
+        for k in sorted(dep_to_when.keys(), key=dep_sorting_key):
             name, version_list, when_spec, marker, extras = k
             when = dep_to_when[k]
-            version_list_str = (
-                "" if version_list == vn.any_version else f"@{version_list}"
-            )
 
-            if marker is not None or extras:
-                print()
-                if marker is not None:
-                    print(f"    # marker: {marker}")
-                if extras:
-                    print(f"    # extras: {','.join(extras)}")
+            if marker is not None:
+                print(f"    # marker: {marker}")
 
             when_spec = Spec() if when_spec is None else when_spec
             when_spec.versions.intersect(when)
@@ -435,10 +426,11 @@ def generate(
                 when_str = f', when="{when_spec}"'
 
             comment = "# " if marker else ""
-            spack_name = f"py-{name}" if name != "python" else "python"
-            print(
-                f'    {comment}depends_on("{spack_name}{version_list_str}"{when_str})'
-            )
+            pkg_name = "python" if name == "python" else f"py-{name}"
+            extras_variants = "".join(f"+{v}" for v in extras)
+            dep_spec = Spec(f"{pkg_name} {extras_variants}")
+            dep_spec.versions = version_list
+            print(f'    {comment}depends_on("{dep_spec}"{when_str})')
 
     # Return the possible dependency names
     return [k[0] for k in dep_to_when.keys()]
@@ -447,7 +439,6 @@ def generate(
 def get_possible_deps(
     name: str,
     sqlite_cursor: sqlite3.Cursor,
-    drop_extras_re: re.Pattern,
     seen: Set[str],
     depth=0,
 ):
@@ -470,25 +461,22 @@ def get_possible_deps(
             if r.name in seen or r.name in deps:
                 continue
             # Anything that is statically false is not a dependency in Spack anyways.
-            if r.marker and marker_to_spec(r.marker, drop_extras_re) is False:
+            if r.marker and marker_to_spec(r.marker, set()) is False:
                 continue
             deps.add(r.name)
 
     seen.update(deps)
 
     for dep in deps:
-        get_possible_deps(dep, sqlite_cursor, drop_extras_re, seen, depth + 1)
+        get_possible_deps(dep, sqlite_cursor, seen, depth + 1)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="to_spack.py", description="Convert PyPI data to Spack data"
+        prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
     parser.add_argument(
         "--db", default="data.db", help="The database file to read from"
-    )
-    parser.add_argument(
-        "--drop-extras", default=".*", help="Drop extras matching this regex"
     )
     subparsers = parser.add_subparsers(dest="command")
     c_generate = subparsers.add_parser(
@@ -511,11 +499,10 @@ if __name__ == "__main__":
 
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()
-    drop_extras_re = re.compile(args.drop_extras, re.IGNORECASE)
 
     if args.command == "generate":
         if not args.recursive:
-            generate(args.package, sqlite_cursor, drop_extras_re)
+            generate(args.package, sqlite_cursor, set())
         else:
             seen = set()
             queue = [args.package]
@@ -526,8 +513,8 @@ if __name__ == "__main__":
                 seen.add(package)
                 print()
                 print(f"{package}")
-                queue.extend(generate(package))
+                queue.extend(generate(package, sqlite_cursor, set()))
     elif args.command == "tree":
         seen = set()
-        get_possible_deps(args.package, sqlite_cursor, drop_extras_re, seen)
+        get_possible_deps(args.package, sqlite_cursor, seen)
         print("Total:", len(seen))

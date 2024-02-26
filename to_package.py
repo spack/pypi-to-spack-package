@@ -307,19 +307,31 @@ def populate(
         try:
             to_insert = []
             if requires_python:
-                # Add the python dependency separately
-                to_insert.append(
-                    (
+                # This is the "raw" version list.
+                python_ver = version_list_from_specifier(SpecifierSet(requires_python))
+
+                # First drop any unsupported versions.
+                python_ver.versions = [
+                    v for v in python_ver if not v.satisfies(UNSUPPORTED_PYTHON)
+                ]
+
+                # Finally, if the union is the entire space, it just means python is unconstrained.
+                union_with_unsupported = vn.VersionList()
+                union_with_unsupported.versions[:] = python_ver.versions
+                union_with_unsupported.add(UNSUPPORTED_PYTHON)
+                if union_with_unsupported != vn.any_version:
+                    to_insert.append(
                         (
-                            "python",
-                            version_list_from_specifier(SpecifierSet(requires_python)),
-                            None,
-                            None,
-                            frozenset(),
-                        ),
-                        spack_version,
+                            (
+                                "python",
+                                python_ver,
+                                None,
+                                None,
+                                frozenset(),
+                            ),
+                            spack_version,
+                        )
                     )
-                )
 
             for requirement_str in json.loads(requires_dist):
                 r = Requirement(requirement_str)

@@ -6,6 +6,7 @@
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -314,13 +315,18 @@ def dep_sorting_key(dep):
     """Sensible ordering key when emitting depends_on statements."""
     name, version_list, when_spec, marker, extras = dep
     return (
-        bool(marker),
         name != "python",
-        when_spec and when_spec.variants,
         name,
         version_list,
         when_spec,
     )
+
+
+NAME_REGEX = re.compile(r"[-_.]+")
+
+
+def normalized_name(name):
+    return re.sub(NAME_REGEX, "-", name).lower()
 
 
 def construct_nice_range(
@@ -358,6 +364,7 @@ class Node:
 def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
+    name = normalized_name(name)
     for (
         version,
         requires_dist,
@@ -448,7 +455,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
                 to_insert.append(
                     (
                         (
-                            r.name,
+                            normalized_name(r.name),
                             version_list_from_specifier(r.specifier),
                             marker_when_spec,
                             r.marker,
@@ -522,13 +529,17 @@ def print_package(
             used. If provided, this function will emit only variant(...) statements for those, and
             omit any depends_on statements that are statically unsatisfiable.
     """
+    if not node.version_to_shasum:
+        print("    # No sdist available")
+        print("    pass")
+        print()
+        return
+
     known_versions = sorted(node.version_to_shasum.keys())
 
     for v in sorted(known_versions, reverse=True):
         print(f'    version("{v}", sha256="{node.version_to_shasum[v]}")')
-
-    if known_versions:
-        print()
+    print()
 
     # TODO: if defined_variants is not provided, infer from node.dep_to_when.keys().
     if defined_variants:
@@ -536,101 +547,63 @@ def print_package(
             print(f'    variant("{variant}", default=False)')
         print()
 
-    first_variant_printed = False
-
     # Then the depends_on bits.
-    if node.dep_to_when:
-        commented_lines = []
+    uncommented_lines = []
+    commented_lines = []
+    for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
+        child, version_list, when_spec, marker, extras = k
+        when = node.dep_to_when[k]
+
+        if marker is not None:
+            comment = f"marker: {marker}"
+        else:
+            comment = False
+
+        when_spec = Spec() if when_spec is None else when_spec
+        when_spec.versions.intersect(when)
+
+        if when_spec == Spec("@:"):
+            when_str = ""
+        else:
+            when_str = f', when="{when_spec}"'
+
+        # Comment out a depends_on statement if the variants do not exist, or if there are
+        # markers that we could not evaluate.
+        if comment is False and defined_variants and child != "python":
+            if (
+                when_spec
+                and when_spec.variants
+                and not all(
+                    v in defined_variants[node.name] for v in when_spec.variants
+                )
+            ):
+                comment = "variants statically unused"
+            elif child not in defined_variants or not extras.issubset(
+                defined_variants[child]
+            ):
+                comment = "variants statically unused"
+
+        pkg_name = "python" if child == "python" else f"py-{child}"
+        extras_variants = "".join(f"+{v}" for v in extras)
+        dep_spec = Spec(f"{pkg_name} {extras_variants}")
+        dep_spec.versions = version_list
+        line = f'depends_on("{dep_spec}"{when_str})'
+        if comment:
+            commented_lines.append((line, comment))
+        else:
+            uncommented_lines.append(line)
+
+    if uncommented_lines:
         print('    with default_args(deptype=("build", "run")):')
-        for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
-            child, version_list, when_spec, marker, extras = k
-            when = node.dep_to_when[k]
+        for line in uncommented_lines:
+            print(f"        {line}")
 
-            if marker is not None:
-                comment = f"marker: {marker}"
-            else:
-                comment = False
+    for line, comment in commented_lines:
+        print()
+        print(f"        # {comment}")
+        print(f"        # {line}")
 
-            when_spec = Spec() if when_spec is None else when_spec
-            when_spec.versions.intersect(when)
-
-            # If this is the first when spec with variants, print a newline
-            if when_spec.variants and not first_variant_printed:
-                print()
-                first_variant_printed = True
-
-            if when_spec == Spec("@:"):
-                when_str = ""
-            else:
-                when_str = f', when="{when_spec}"'
-
-            # Comment out a depends_on statement if the variants do not exist, or if there are
-            # markers that we could not evaluate.
-            if comment is False and defined_variants and child != "python":
-                if (
-                    when_spec
-                    and when_spec.variants
-                    and not all(
-                        v in defined_variants[node.name] for v in when_spec.variants
-                    )
-                ):
-                    comment = "variants statically unused"
-                elif child not in defined_variants or not extras.issubset(
-                    defined_variants[child]
-                ):
-                    comment = "variants statically unused"
-
-            pkg_name = "python" if child == "python" else f"py-{child}"
-            extras_variants = "".join(f"+{v}" for v in extras)
-            dep_spec = Spec(f"{pkg_name} {extras_variants}")
-            dep_spec.versions = version_list
-            line = f'depends_on("{dep_spec}"{when_str})'
-            if comment:
-                commented_lines.append((line, comment))
-            else:
-                print(f"        {line}")
-
-        for line, comment in commented_lines:
-            print()
-            print(f"        # {comment}")
-            print(f"        # {line}")
-
-    print("\n")
-
-
-def get_possible_deps(
-    name: str,
-    sqlite_cursor: sqlite3.Cursor,
-    seen: Set[str],
-    depth=0,
-):
-    print("  " * depth + name)
-    seen.add(name)
-    deps = set()
-
-    for (requires_dist,) in sqlite_cursor.execute(
-        """
-    SELECT DISTINCT requires_dist
-    FROM versions
-    WHERE name = ?""",
-        (name,),
-    ):
-        for requirement_str in json.loads(requires_dist):
-            try:
-                r = Requirement(requirement_str)
-            except ValueError:
-                continue
-            if r.name in seen or r.name in deps:
-                continue
-            # Anything that is statically false is not a dependency in Spack anyways.
-            if r.marker and marker_to_spec(r.marker, lambda variant: True) is False:
-                continue
-            deps.add(r.name)
-
-    seen.update(deps)
-
-    for dep in deps:
-        get_possible_deps(dep, sqlite_cursor, seen, depth + 1)
+    print()
 
 
 if __name__ == "__main__":
@@ -722,6 +695,7 @@ if __name__ == "__main__":
 
         defined_variants = {name: variants for name, (_, variants) in packages.items()}
 
+        print("from spack.package import *\n")
         for name, (node, _) in packages.items():
             sanitized_name = name.replace(".", "-")
             class_name = mod_to_class(f"py-{sanitized_name}")

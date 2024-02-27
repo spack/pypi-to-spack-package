@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -59,6 +60,13 @@ def parse_date(d: str) -> datetime:
     raise ValueError("Unable to parse date string")
 
 
+NAME_REGEX = re.compile(r"[-_.]+")
+
+
+def normalize(name):
+    return re.sub(NAME_REGEX, "-", name).lower()
+
+
 with open(json_file, "rb") as f:
     entries = []
     newest_time = datetime.min
@@ -74,7 +82,7 @@ with open(json_file, "rb") as f:
 
         entries.append(
             (
-                data["name"],
+                normalize(data["name"]),
                 data["version"],
                 json.dumps(data.get("requires_dist", []), separators=(",", ":")),
                 data.get("requires_python", ""),

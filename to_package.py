@@ -6,19 +6,20 @@
 import argparse
 import json
 import os
-import re
 import sqlite3
 import sys
 from collections import defaultdict
-from typing import Dict, FrozenSet, Optional, Set, Tuple, Union
+from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import packaging.version as pv
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import Requirement
 from packaging.specifiers import Specifier, SpecifierSet
+from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
+from spack.util.naming import mod_to_class
 from spack.version.version_types import VersionStrComponent, prev_version_str_component
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
@@ -83,29 +84,57 @@ def specifier_to_spack_version(s: Specifier):
     return v
 
 
-def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
+def _eval_python_version_marker(
+    variable: str, op: str, value: str
+) -> Optional[vn.VersionList]:
     # Do everything in terms of ranges for simplicity.
+
+    # `value` has semver semantics. Literal `3` is really `3.0.0`.
+    # `python_version`: major.minor
+    # `python_full_version`: major.minor.patch  (TODO: rc/alpha/beta etc)
+
+    # `python_version > "3"` is translated as `@3.1:`
+    # `python_version > "3.6"` is translated as `@3.7:`
+    # `python_version < "3"` is translated as `@:2`
+    # `python_version == "3"` is translated as `@3.0`
+    # `python_full_version > "3"` is translated as `@3.0.1:`
+    # `python_full_version > "3.6"` is translated as `@3.6.1:`
+    # `python_full_version > "3.6.1"` is translated as `@3.6.2:`
+
+    # Apparently `in` and `not in` work, and interpret the right hand side as TEXT :sob: not as
+    # list of versions they parse.
+    if op not in ("==", ">", ">=", "<", "<=", "!="):
+        return None
+
+    try:
+        vv = pv.Version(value)
+    except pv.InvalidVersion:
+        print(f"could not parse `{value}` as version", file=sys.stderr)
+        return None
+
+    if vv.is_prerelease or vv.is_postrelease or vv.is_devrelease or vv.epoch:
+        print(f"dunno about: `{variable} {op} {value}`", file=sys.stderr)
+        return None
+    if variable == "python_version":
+        v = vn.StandardVersion.from_string(f"{vv.major}.{vv.minor}")
+    elif variable == "python_full_version":
+        v = vn.StandardVersion.from_string(f"{vv.major}.{vv.minor}.{vv.micro}")
+
     if op == "==":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(v, v)])
     elif op == ">":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())]
         )
     elif op == ">=":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
     elif op == "<":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
         )
     elif op == "<=":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList([vn.VersionRange(vn.StandardVersion.typemin(), v)])
     elif op == "!=":
-        v = vn.StandardVersion.from_string(value)
         return vn.VersionList(
             [
                 vn.VersionRange(
@@ -119,14 +148,33 @@ def _eval_python_version_marker(op, value) -> Optional[vn.VersionList]:
         return None
 
 
-def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spec]:
+def _eval_constraint(
+    node: tuple, accept_extra: Callable[[str], bool]
+) -> Union[None, bool, Spec]:
     # TODO: os_name, sys_platform, platform_machine, platform_release, platform_system,
     # platform_version, implementation_version
 
     # Operator
     variable, op, value = node
-    assert isinstance(variable, Variable)
     assert isinstance(op, Op)
+
+    # Flip the comparison if the value is on the left-hand side.
+    if isinstance(variable, Value) and isinstance(value, Variable):
+        flipped_op = {
+            ">": "<",
+            "<": ">",
+            ">=": "<=",
+            "<=": ">=",
+            "==": "==",
+            "!=": "!=",
+            "~=": "~=",
+        }.get(op.value)
+        if flipped_op is None:
+            print(f"do not know how to evaluate `{node}`", file=sys.stderr)
+            return None
+        variable, op, value = value, Op(flipped_op), variable
+
+    assert isinstance(variable, Variable)
     assert isinstance(value, Value)
 
     # Statically evaluate implementation name, since all we support is cpython
@@ -146,11 +194,10 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
 
     try:
         if variable.value == "extra":
-            has_extra = value.value in has_extras
             if op.value == "==":
-                return Spec(f"+{value.value}") if has_extra else False
+                return Spec(f"+{value.value}") if accept_extra(value.value) else False
             elif op.value == "!=":
-                return Spec(f"~{value.value}") if has_extra else True
+                return Spec(f"~{value.value}") if accept_extra(value.value) else True
     except SpecSyntaxError as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None
@@ -159,7 +206,7 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
     if variable.value not in ("python_version", "python_full_version"):
         return None
 
-    versions = _eval_python_version_marker(op.value, value.value)
+    versions = _eval_python_version_marker(variable.value, op.value, value.value)
 
     if versions is None:
         return None
@@ -172,13 +219,15 @@ def _eval_constraint(node: tuple, has_extras: Set[str]) -> Union[None, bool, Spe
     return spec
 
 
-def _eval_node(node, has_extras: Set[str]) -> Union[None, bool, Spec]:
+def _eval_node(node, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
     if isinstance(node, tuple):
-        return _eval_constraint(node, has_extras)
-    return _marker_to_spec(node, has_extras)
+        return _eval_constraint(node, accept_extra)
+    return _marker_to_spec(node, accept_extra)
 
 
-def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]:
+def _marker_to_spec(
+    node: list, accept_extra: Callable[[str], bool]
+) -> Union[None, bool, Spec]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -196,7 +245,7 @@ def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]
 
     assert isinstance(node, list) and len(node) > 0
 
-    lhs = _eval_node(node[0], has_extras)
+    lhs = _eval_node(node[0], accept_extra)
 
     for i in range(2, len(node), 2):
         # Actually op should be constant: x and y and z. we don't assert it here.
@@ -205,7 +254,7 @@ def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]
         if op == "and":
             if lhs is False:
                 return False
-            rhs = _eval_node(node[i], has_extras)
+            rhs = _eval_node(node[i], accept_extra)
             if rhs is False:
                 return False
             elif lhs is None or rhs is None:
@@ -213,11 +262,17 @@ def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]
             elif lhs is True:
                 lhs = rhs
             elif rhs is not True:  # Intersection of specs
-                lhs.constrain(rhs)
+                try:
+                    lhs.constrain(rhs)
+                except UnsatisfiableSpecError:
+                    # This happens when people have no clue what they're doing, and such people
+                    # exist. E.g. python_version > "3" and python_version < "3.11" is
+                    # unsatisfiable.
+                    return False
         elif op == "or":
             if lhs is True:
                 return True
-            rhs = _eval_node(node[i], has_extras)
+            rhs = _eval_node(node[i], accept_extra)
             if rhs is True:
                 return True
             elif lhs is None or rhs is None:
@@ -236,12 +291,14 @@ def _marker_to_spec(node: list, has_extras: Set[str]) -> Union[None, bool, Spec]
     return lhs
 
 
-def marker_to_spec(m: Marker, has_extras: Set[str]) -> Union[bool, None, Spec]:
+def marker_to_spec(
+    m: Marker, accept_extra: Callable[[str], bool]
+) -> Union[bool, None, Spec]:
     """Evaluate the marker expression tree either (1) as a Spack spec if possible, (2) statically
     as True or False given that we only support cpython, (3) None if we can't translate it into
     Spack DSL."""
     # TODO: simplify expression we can evaluate statically partially.
-    return _marker_to_spec(m._markers, has_extras)
+    return _marker_to_spec(m._markers, accept_extra)
 
 
 def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
@@ -266,12 +323,39 @@ def dep_sorting_key(dep):
     )
 
 
-DepToWhen = Tuple[str, vn.VersionList, Optional[Marker], FrozenSet[str]]
+def construct_nice_range(
+    lo: vn.StandardVersion, hi: vn.StandardVersion, next: vn.StandardVersion
+) -> vn.ClosedOpenRange:
+    """If the last entry is say 1.2.3, and the next known version 1.3.0, we'd like to use @:1.2
+    instead of @:1.2.3, since it leads to smaller diffs if a patch version is added later.
+    """
+    num = len(hi)
+    if num <= 1:
+        return vn.VersionRange(lo, hi)
+    version_range = vn.VersionRange(lo, hi.up_to(num - 1))
+    if next.satisfies(version_range):
+        return vn.VersionRange(lo, hi)
+    return version_range
 
 
-def populate(
-    name: str, sqlite_cursor: sqlite3.Cursor
-) -> Tuple[Dict[vn.StandardVersion, str], Dict[DepToWhen, vn.VersionList]]:
+DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
+
+
+class Node:
+    __slots__ = ("name", "dep_to_when", "version_to_shasum")
+
+    def __init__(
+        self,
+        name: str,
+        dep_to_when: Dict[DepToWhen, vn.VersionList],
+        version_to_shasum: Dict[vn.StandardVersion, str],
+    ):
+        self.name = name
+        self.dep_to_when = dep_to_when
+        self.version_to_shasum = version_to_shasum
+
+
+def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
     for (
@@ -338,7 +422,16 @@ def populate(
 
                 # Translate markers to ^python@ constraints if possible.
                 if r.marker is not None:
-                    marker_when_spec = marker_to_spec(r.marker, set())
+                    try:
+                        marker_when_spec = marker_to_spec(
+                            r.marker, lambda variant: True
+                        )
+                    except Exception as e:
+                        print(
+                            f"{name}: broken marker {r.marker}: {e.__class__.__name__}: {e}",
+                            file=sys.stderr,
+                        )
+                        raise
                     if marker_when_spec is False:
                         # Statically evaluate to False: do not emit depends_on.
                         continue
@@ -397,15 +490,9 @@ def populate(
                 i += 1
             else:
                 # Not consecutive: emit a range.
-
-                # If the last entry is say 1.2.3, and the next known version 1.3.0, we'd like to
-                # use @:1.2 instead of @:1.2.3, since it leads to smaller diffs if a patch version
-                # is added later.
-                last = when[j - 1]
-                version_range = vn.VersionRange(lo, last.up_to(len(last) - 1))
-                if known_versions[i].satisfies(version_range):
-                    version_range = vn.VersionRange(lo, last)
-                new_list.append(version_range)
+                new_list.append(
+                    construct_nice_range(lo=lo, hi=when[j - 1], next=known_versions[i])
+                )
                 lo = when[j]
                 i = known_versions.index(lo) + 1
 
@@ -416,39 +503,53 @@ def populate(
         if i == len(known_versions):
             version_range = vn.VersionRange(lo, vn.StandardVersion.typemax())
         else:
-            last = when[j - 1]
-            version_range = vn.VersionRange(lo, last.up_to(len(last) - 1))
-            if known_versions[i].satisfies(version_range):
-                version_range = vn.VersionRange(lo, last)
+            version_range = construct_nice_range(
+                lo=lo, hi=when[j - 1], next=known_versions[i]
+            )
 
         new_list.append(version_range)
         when.versions = new_list
-    return version_to_shasum, dep_to_when
+    return Node(name, dep_to_when=dep_to_when, version_to_shasum=version_to_shasum)
 
 
 def print_package(
-    version_to_shasum: Dict[vn.StandardVersion, str],
-    dep_to_when: Dict[DepToWhen, vn.VersionList],
+    node: Node, defined_variants: Optional[Dict[str, Set[str]]] = None
 ) -> None:
-    known_versions = sorted(version_to_shasum.keys())
+    """
+    Arguments:
+        node: package to print
+        defined_variants: a mapping from package name to a set of variants that are effectively
+            used. If provided, this function will emit only variant(...) statements for those, and
+            omit any depends_on statements that are statically unsatisfiable.
+    """
+    known_versions = sorted(node.version_to_shasum.keys())
 
     for v in sorted(known_versions, reverse=True):
-        print(f'    version("{v}", sha256="{version_to_shasum[v]}")')
+        print(f'    version("{v}", sha256="{node.version_to_shasum[v]}")')
 
     if known_versions:
+        print()
+
+    # TODO: if defined_variants is not provided, infer from node.dep_to_when.keys().
+    if defined_variants:
+        for variant in defined_variants.get(node.name, ()):
+            print(f'    variant("{variant}", default=False)')
         print()
 
     first_variant_printed = False
 
     # Then the depends_on bits.
-    if dep_to_when:
+    if node.dep_to_when:
+        commented_lines = []
         print('    with default_args(deptype=("build", "run")):')
-        for k in sorted(dep_to_when.keys(), key=dep_sorting_key):
-            name, version_list, when_spec, marker, extras = k
-            when = dep_to_when[k]
+        for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
+            child, version_list, when_spec, marker, extras = k
+            when = node.dep_to_when[k]
 
             if marker is not None:
-                print(f"        # marker: {marker}")
+                comment = f"marker: {marker}"
+            else:
+                comment = False
 
             when_spec = Spec() if when_spec is None else when_spec
             when_spec.versions.intersect(when)
@@ -463,12 +564,38 @@ def print_package(
             else:
                 when_str = f', when="{when_spec}"'
 
-            comment = "# " if marker else ""
-            pkg_name = "python" if name == "python" else f"py-{name}"
+            # Comment out a depends_on statement if the variants do not exist, or if there are
+            # markers that we could not evaluate.
+            if comment is False and defined_variants and child != "python":
+                if (
+                    when_spec
+                    and when_spec.variants
+                    and not all(
+                        v in defined_variants[node.name] for v in when_spec.variants
+                    )
+                ):
+                    comment = "variants statically unused"
+                elif child not in defined_variants or not extras.issubset(
+                    defined_variants[child]
+                ):
+                    comment = "variants statically unused"
+
+            pkg_name = "python" if child == "python" else f"py-{child}"
             extras_variants = "".join(f"+{v}" for v in extras)
             dep_spec = Spec(f"{pkg_name} {extras_variants}")
             dep_spec.versions = version_list
-            print(f'        {comment}depends_on("{dep_spec}"{when_str})')
+            line = f'depends_on("{dep_spec}"{when_str})'
+            if comment:
+                commented_lines.append((line, comment))
+            else:
+                print(f"        {line}")
+
+        for line, comment in commented_lines:
+            print()
+            print(f"        # {comment}")
+            print(f"        # {line}")
+
+    print("\n")
 
 
 def get_possible_deps(
@@ -496,7 +623,7 @@ def get_possible_deps(
             if r.name in seen or r.name in deps:
                 continue
             # Anything that is statically false is not a dependency in Spack anyways.
-            if r.marker and marker_to_spec(r.marker, set()) is False:
+            if r.marker and marker_to_spec(r.marker, lambda variant: True) is False:
                 continue
             deps.add(r.name)
 
@@ -513,18 +640,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--db", default="data.db", help="The database file to read from"
     )
-    subparsers = parser.add_subparsers(dest="command")
-    c_generate = subparsers.add_parser(
-        "generate", help="Generate package.py for a PyPI package"
+    parser.add_argument(
+        "--no-recurse",
+        action="store_false",
+        dest="recurse",
+        help="Do not recurese into dependencies",
     )
-    c_generate.add_argument("package", help="The package name on PyPI")
-    c_generate.add_argument(
-        "-r", "--recursive", action="store_true", help="Recurse into dependencies"
-    )
-    c_tree = subparsers.add_parser(
-        "tree", help="List all possible dependencies for a PyPI package"
-    )
-    c_tree.add_argument("package", help="The package name on PyPI")
+    parser.add_argument("package", help="The package name on PyPI")
 
     args = parser.parse_args()
 
@@ -535,24 +657,73 @@ if __name__ == "__main__":
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()
 
-    if args.command == "generate":
-        if not args.recursive:
-            version_to_shasum, dep_to_when = populate(args.package, sqlite_cursor)
-            print_package(version_to_shasum, dep_to_when)
-        else:
-            seen = set()
-            queue = [args.package]
-            while queue:
-                package = queue.pop()
-                if package in seen or package == "python":
+    if not args.recurse:
+        print_package(populate(args.package, sqlite_cursor))
+    else:
+        # Maps package name to (Node, seen_variants) tuples. The set of variants is those
+        # variants that can possibly be turned on. It's intended to list a subset of the
+        # variants defined by the package, as a means to omit variants like +test, +dev, and
+        # +doc etc (or whatever the package author decided to call them) that are not required
+        # by any of its dependents.
+        packages: Dict[str, Tuple[Node, Set[str]]] = {}
+
+        # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
+        # those that its dependent required (or required from the command line for the root).
+        queue: List[Tuple[str, Set[str], int]] = [(args.package, {"colorama", "d"}, 0)]
+        i = 1
+        while queue:
+            name, with_variants, depth = queue.pop()
+
+            entry = packages.get(name)
+            seen_before = entry is not None
+
+            # Drop if we've already seen this package with the same variants enabled.
+            if entry and with_variants.issubset(entry[1]):
+                continue
+            print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
+
+            if seen_before:
+                node, seen_variants = entry
+                seen_variants.update(with_variants)
+            else:
+                node = populate(name, sqlite_cursor)
+                seen_variants = set(with_variants)
+                packages[name] = (node, seen_variants)
+
+            # If we have not seen this package before, we follow the unconditional edges
+            # (i.e. those with a when clause that does not require any variants) and the
+            # conditional ones that are enabled by the required variants.
+            for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
+                if child_name == "python":
                     continue
-                seen.add(package)
-                print()
-                print(f"{package}")
-                version_to_shasum, dep_to_when = populate(package, sqlite_cursor)
-                print_package(version_to_shasum, dep_to_when)
-                queue.extend(key[0] for key in dep_to_when.keys())
-    elif args.command == "tree":
-        seen = set()
-        get_possible_deps(args.package, sqlite_cursor, seen)
-        print("Total:", len(seen))
+                if (
+                    not seen_before
+                    and (
+                        # unconditional edges and conditional edges of all required
+                        when_spec is None
+                        or not when_spec.variants
+                        or all(
+                            variant in seen_variants for variant in when_spec.variants
+                        )
+                    )
+                    or (
+                        # conditional edges with new variants only
+                        seen_before
+                        and when_spec is not None
+                        and when_spec.variants
+                        and all(
+                            variant in seen_variants for variant in when_spec.variants
+                        )
+                    )
+                ):
+                    queue.append((child_name, extras, depth + 1))
+
+            i += 1
+
+        defined_variants = {name: variants for name, (_, variants) in packages.items()}
+
+        for name, (node, _) in packages.items():
+            sanitized_name = name.replace(".", "-")
+            class_name = mod_to_class(f"py-{sanitized_name}")
+            print(f"class {class_name}:")
+            print_package(node, defined_variants)

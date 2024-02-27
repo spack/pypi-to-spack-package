@@ -99,6 +99,26 @@ class PyBlack:
         # depends_on("py-tomli@1.1.0:", when="@22.10.0:22.12")
 ```
 
+## Issues
+
+- **PKG-INFO**: some packages do not provide the `Requires-Dist` fields in the `PKG-INFO` file,
+  meaning that we do not know their dependencies. This is a shortcoming of the PyPI database.
+- **Build dependencies**: currently we cannot generate build dependencies, as they are lacking
+  from the PyPI database.
+- **Markers**: not all can be directly translated to a single `when` condition:
+  - ✅ `extra == "a" and extra == "b"`: works, and gets translated into `when="+a +b"`
+  - ✅ `python_version <= "3.8" or python_version >= "3.10`: works, because the `or` operator
+    can be translated into a version list `^python@:3.8,3.10:`.
+  - ❌ `extra == "foo" or extra == "bar"`: can only be expressed in Spack through two separate
+    `depends_on(..., when="+foo)` and `depends_on(..., when="+bar)` statements, which is not
+    yet implemented.
+  - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
+    because the `in` and `not in` operators use the right-hand side as literal string, instead of
+    a version list. So, I have not implemented this.
+  - ❌ The variables `os_name`, `sys_platform`, `platform_machine`, `platform_release`,
+    `platform_system`, `platform_version`, `implementation_version` are still to-do in as far as
+    they can be translated to a `Spec`.
+
 ## License
 
 This project is part of Spack. Spack is distributed under the terms of both the

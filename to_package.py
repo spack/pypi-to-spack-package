@@ -364,7 +364,6 @@ class Node:
 def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
-    name = normalized_name(name)
     for (
         version,
         requires_dist,
@@ -613,13 +612,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--db", default="data.db", help="The database file to read from"
     )
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", help="The command to run")
+    p_generate = subparsers.add_parser("generate", help="Generate a package.py file")
+    p_generate.add_argument(
         "--no-recurse",
         action="store_false",
         dest="recurse",
         help="Do not recurese into dependencies",
     )
-    parser.add_argument("package", help="The package name on PyPI")
+    p_generate.add_argument("package", help="The package name on PyPI")
+    p_generate.add_argument(
+        "extras", nargs="*", help="Extras / variants to define on given package"
+    )
+    p_describe = subparsers.add_parser("describe", help="Describe a package")
+    p_describe.add_argument("package", help="The package name on PyPI")
 
     args = parser.parse_args()
 
@@ -629,75 +635,94 @@ if __name__ == "__main__":
 
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()
+    pkg_name = normalized_name(args.package)
 
-    if not args.recurse:
-        print_package(populate(args.package, sqlite_cursor))
-    else:
-        # Maps package name to (Node, seen_variants) tuples. The set of variants is those
-        # variants that can possibly be turned on. It's intended to list a subset of the
-        # variants defined by the package, as a means to omit variants like +test, +dev, and
-        # +doc etc (or whatever the package author decided to call them) that are not required
-        # by any of its dependents.
-        packages: Dict[str, Tuple[Node, Set[str]]] = {}
+    if args.command == "describe":
+        node = populate(pkg_name, sqlite_cursor)
+        variants = set(
+            variant
+            for _, _, when_spec, _, _ in node.dep_to_when.keys()
+            if when_spec
+            for variant in when_spec.variants
+        )
+        print("Normalized name:", node.name)
+        print("Variants:", " ".join(variants) if variants else "none")
+        print("Total versions:", len(node.version_to_shasum))
 
-        # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
-        # those that its dependent required (or required from the command line for the root).
-        queue: List[Tuple[str, Set[str], int]] = [(args.package, {"colorama", "d"}, 0)]
-        i = 1
-        while queue:
-            name, with_variants, depth = queue.pop()
+    elif args.command == "generate":
+        if not args.recurse:
+            print_package(populate(pkg_name, sqlite_cursor))
+        else:
+            # Maps package name to (Node, seen_variants) tuples. The set of variants is those
+            # variants that can possibly be turned on. It's intended to list a subset of the
+            # variants defined by the package, as a means to omit variants like +test, +dev, and
+            # +doc etc (or whatever the package author decided to call them) that are not required
+            # by any of its dependents.
+            packages: Dict[str, Tuple[Node, Set[str]]] = {}
 
-            entry = packages.get(name)
-            seen_before = entry is not None
+            # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
+            # those that its dependent required (or required from the command line for the root).
+            queue: List[Tuple[str, Set[str], int]] = [(pkg_name, {*args.extras}, 0)]
+            i = 1
+            while queue:
+                name, with_variants, depth = queue.pop()
 
-            # Drop if we've already seen this package with the same variants enabled.
-            if entry and with_variants.issubset(entry[1]):
-                continue
-            print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
+                entry = packages.get(name)
+                seen_before = entry is not None
 
-            if seen_before:
-                node, seen_variants = entry
-                seen_variants.update(with_variants)
-            else:
-                node = populate(name, sqlite_cursor)
-                seen_variants = set(with_variants)
-                packages[name] = (node, seen_variants)
-
-            # If we have not seen this package before, we follow the unconditional edges
-            # (i.e. those with a when clause that does not require any variants) and the
-            # conditional ones that are enabled by the required variants.
-            for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
-                if child_name == "python":
+                # Drop if we've already seen this package with the same variants enabled.
+                if entry and with_variants.issubset(entry[1]):
                     continue
-                if (
-                    not seen_before
-                    and (
-                        # unconditional edges and conditional edges of all required
-                        when_spec is None
-                        or not when_spec.variants
-                        or all(
-                            variant in seen_variants for variant in when_spec.variants
+                print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
+
+                if seen_before:
+                    node, seen_variants = entry
+                    seen_variants.update(with_variants)
+                else:
+                    node = populate(name, sqlite_cursor)
+                    seen_variants = set(with_variants)
+                    packages[name] = (node, seen_variants)
+
+                # If we have not seen this package before, we follow the unconditional edges
+                # (i.e. those with a when clause that does not require any variants) and the
+                # conditional ones that are enabled by the required variants.
+                for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
+                    if child_name == "python":
+                        continue
+                    if (
+                        not seen_before
+                        and (
+                            # unconditional edges and conditional edges of all required
+                            when_spec is None
+                            or not when_spec.variants
+                            or all(
+                                variant in seen_variants
+                                for variant in when_spec.variants
+                            )
                         )
-                    )
-                    or (
-                        # conditional edges with new variants only
-                        seen_before
-                        and when_spec is not None
-                        and when_spec.variants
-                        and all(
-                            variant in seen_variants for variant in when_spec.variants
+                        or (
+                            # conditional edges with new variants only
+                            seen_before
+                            and when_spec is not None
+                            and when_spec.variants
+                            and all(
+                                variant in seen_variants
+                                for variant in when_spec.variants
+                            )
                         )
-                    )
-                ):
-                    queue.append((child_name, extras, depth + 1))
+                    ):
+                        queue.append((child_name, extras, depth + 1))
 
-            i += 1
+                i += 1
 
-        defined_variants = {name: variants for name, (_, variants) in packages.items()}
+            # Simplify to a map from package name to a set of variants that are effectively used.
+            defined_variants = {
+                name: variants for name, (_, variants) in packages.items()
+            }
 
-        print("from spack.package import *\n")
-        for name, (node, _) in packages.items():
-            sanitized_name = name.replace(".", "-")
-            class_name = mod_to_class(f"py-{sanitized_name}")
-            print(f"class {class_name}:")
-            print_package(node, defined_variants)
+            print("from spack.package import *\n")
+            for name, (node, _) in packages.items():
+                sanitized_name = name.replace(".", "-")
+                class_name = mod_to_class(f"py-{sanitized_name}")
+                print(f"class {class_name}:")
+                print_package(node, defined_variants)

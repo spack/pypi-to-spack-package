@@ -364,9 +364,8 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
 
         spack_version = vn.StandardVersion.from_string(version)
 
-        # Skip older uploads of identical versions.
-        if spack_version in version_to_shasum:
-            continue
+        # Database should only contain the latest version of a package.
+        assert spack_version not in version_to_shasum
 
         try:
             to_insert = []

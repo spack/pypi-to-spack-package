@@ -4,8 +4,10 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import argparse
+import io
 import json
 import os
+import pathlib
 import re
 import sqlite3
 import sys
@@ -46,9 +48,7 @@ def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
         string_components.append(str(sep))
     string_components.append(str(prev))
 
-    return vn.StandardVersion(
-        "".join(string_components), v.version[:-1] + (prev,), v.separators
-    )
+    return vn.StandardVersion("".join(string_components), v.version[:-1] + (prev,), v.separators)
 
 
 def specifier_to_spack_version(s: Specifier):
@@ -75,9 +75,7 @@ def specifier_to_spack_version(s: Specifier):
     elif s.operator == "!=":
         return vn.VersionList(
             [
-                vn.VersionRange(
-                    vn.StandardVersion.typemin(), prev_version_for_range(v)
-                ),
+                vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
                 vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
             ]
         )
@@ -85,9 +83,7 @@ def specifier_to_spack_version(s: Specifier):
     return v
 
 
-def _eval_python_version_marker(
-    variable: str, op: str, value: str
-) -> Optional[vn.VersionList]:
+def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[vn.VersionList]:
     # Do everything in terms of ranges for simplicity.
 
     # `value` has semver semantics. Literal `3` is really `3.0.0`.
@@ -124,9 +120,7 @@ def _eval_python_version_marker(
     if op == "==":
         return vn.VersionList([vn.VersionRange(v, v)])
     elif op == ">":
-        return vn.VersionList(
-            [vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())]
-        )
+        return vn.VersionList([vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())])
     elif op == ">=":
         return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
     elif op == "<":
@@ -138,9 +132,7 @@ def _eval_python_version_marker(
     elif op == "!=":
         return vn.VersionList(
             [
-                vn.VersionRange(
-                    vn.StandardVersion.typemin(), prev_version_for_range(v)
-                ),
+                vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
                 vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
             ]
         )
@@ -149,9 +141,7 @@ def _eval_python_version_marker(
         return None
 
 
-def _eval_constraint(
-    node: tuple, accept_extra: Callable[[str], bool]
-) -> Union[None, bool, Spec]:
+def _eval_constraint(node: tuple, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
     # TODO: os_name, sys_platform, platform_machine, platform_release, platform_system,
     # platform_version, implementation_version
 
@@ -226,9 +216,7 @@ def _eval_node(node, accept_extra: Callable[[str], bool]) -> Union[None, bool, S
     return _marker_to_spec(node, accept_extra)
 
 
-def _marker_to_spec(
-    node: list, accept_extra: Callable[[str], bool]
-) -> Union[None, bool, Spec]:
+def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -292,9 +280,7 @@ def _marker_to_spec(
     return lhs
 
 
-def marker_to_spec(
-    m: Marker, accept_extra: Callable[[str], bool]
-) -> Union[bool, None, Spec]:
+def marker_to_spec(m: Marker, accept_extra: Callable[[str], bool]) -> Union[bool, None, Spec]:
     """Evaluate the marker expression tree either (1) as a Spack spec if possible, (2) statically
     as True or False given that we only support cpython, (3) None if we can't translate it into
     Spack DSL."""
@@ -305,21 +291,14 @@ def marker_to_spec(
 def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
     versions = vn.any_version
     for s in ss:
-        versions = versions.intersection(
-            vn.VersionList([specifier_to_spack_version(s)])
-        )
+        versions = versions.intersection(vn.VersionList([specifier_to_spack_version(s)]))
     return versions
 
 
 def dep_sorting_key(dep):
     """Sensible ordering key when emitting depends_on statements."""
     name, version_list, when_spec, marker, extras = dep
-    return (
-        name != "python",
-        name,
-        version_list,
-        when_spec,
-    )
+    return (name != "python", name, version_list, when_spec)
 
 
 NAME_REGEX = re.compile(r"[-_.]+")
@@ -364,12 +343,7 @@ class Node:
 def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
-    for (
-        version,
-        requires_dist,
-        requires_python,
-        sha256_blob,
-    ) in sqlite_cursor.execute(
+    for version, requires_dist, requires_python, sha256_blob in sqlite_cursor.execute(
         """
     SELECT version, requires_dist, requires_python, sha256 
     FROM versions
@@ -411,16 +385,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
                 union_with_unsupported.add(UNSUPPORTED_PYTHON)
                 if union_with_unsupported != vn.any_version:
                     to_insert.append(
-                        (
-                            (
-                                "python",
-                                python_ver,
-                                None,
-                                None,
-                                frozenset(),
-                            ),
-                            spack_version,
-                        )
+                        (("python", python_ver, None, None, frozenset()), spack_version)
                     )
 
             for requirement_str in json.loads(requires_dist):
@@ -429,9 +394,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
                 # Translate markers to ^python@ constraints if possible.
                 if r.marker is not None:
                     try:
-                        marker_when_spec = marker_to_spec(
-                            r.marker, lambda variant: True
-                        )
+                        marker_when_spec = marker_to_spec(r.marker, lambda variant: True)
                     except Exception as e:
                         print(
                             f"{name}: broken marker {r.marker}: {e.__class__.__name__}: {e}",
@@ -509,9 +472,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
         if i == len(known_versions):
             version_range = vn.VersionRange(lo, vn.StandardVersion.typemax())
         else:
-            version_range = construct_nice_range(
-                lo=lo, hi=when[j - 1], next=known_versions[i]
-            )
+            version_range = construct_nice_range(lo=lo, hi=when[j - 1], next=known_versions[i])
 
         new_list.append(version_range)
         when.versions = new_list
@@ -519,7 +480,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
 
 
 def print_package(
-    node: Node, defined_variants: Optional[Dict[str, Set[str]]] = None
+    node: Node, defined_variants: Optional[Dict[str, Set[str]]] = None, f: io.StringIO = sys.stdout
 ) -> None:
     """
     Arguments:
@@ -529,22 +490,22 @@ def print_package(
             omit any depends_on statements that are statically unsatisfiable.
     """
     if not node.version_to_shasum:
-        print("    # No sdist available")
-        print("    pass")
-        print()
+        print("    # No sdist available", file=f)
+        print("    pass", file=f)
+        print(file=f)
         return
 
     known_versions = sorted(node.version_to_shasum.keys())
 
     for v in sorted(known_versions, reverse=True):
-        print(f'    version("{v}", sha256="{node.version_to_shasum[v]}")')
-    print()
+        print(f'    version("{v}", sha256="{node.version_to_shasum[v]}")', file=f)
+    print(file=f)
 
     # TODO: if defined_variants is not provided, infer from node.dep_to_when.keys().
     if defined_variants:
         for variant in defined_variants.get(node.name, ()):
-            print(f'    variant("{variant}", default=False)')
-        print()
+            print(f'    variant("{variant}", default=False)', file=f)
+        print(file=f)
 
     # Then the depends_on bits.
     uncommented_lines = []
@@ -572,14 +533,10 @@ def print_package(
             if (
                 when_spec
                 and when_spec.variants
-                and not all(
-                    v in defined_variants[node.name] for v in when_spec.variants
-                )
+                and not all(v in defined_variants[node.name] for v in when_spec.variants)
             ):
                 comment = "variants statically unused"
-            elif child not in defined_variants or not extras.issubset(
-                defined_variants[child]
-            ):
+            elif child not in defined_variants or not extras.issubset(defined_variants[child]):
                 comment = "variants statically unused"
 
         pkg_name = "python" if child == "python" else f"py-{child}"
@@ -593,25 +550,23 @@ def print_package(
             uncommented_lines.append(line)
 
     if uncommented_lines:
-        print('    with default_args(deptype=("build", "run")):')
+        print('    with default_args(deptype=("build", "run")):', file=f)
         for line in uncommented_lines:
-            print(f"        {line}")
+            print(f"        {line}", file=f)
 
     for line, comment in commented_lines:
-        print()
-        print(f"        # {comment}")
-        print(f"        # {line}")
+        print(file=f)
+        print(f"        # {comment}", file=f)
+        print(f"        # {line}", file=f)
 
-    print()
+    print(file=f)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
-    parser.add_argument(
-        "--db", default="data.db", help="The database file to read from"
-    )
+    parser.add_argument("--db", default="data.db", help="The database file to read from")
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     p_generate = subparsers.add_parser("generate", help="Generate a package.py file")
     p_generate.add_argument(
@@ -695,20 +650,14 @@ if __name__ == "__main__":
                             # unconditional edges and conditional edges of all required
                             when_spec is None
                             or not when_spec.variants
-                            or all(
-                                variant in seen_variants
-                                for variant in when_spec.variants
-                            )
+                            or all(variant in seen_variants for variant in when_spec.variants)
                         )
                         or (
                             # conditional edges with new variants only
                             seen_before
                             and when_spec is not None
                             and when_spec.variants
-                            and all(
-                                variant in seen_variants
-                                for variant in when_spec.variants
-                            )
+                            and all(variant in seen_variants for variant in when_spec.variants)
                         )
                     ):
                         queue.append((child_name, extras, depth + 1))
@@ -716,13 +665,16 @@ if __name__ == "__main__":
                 i += 1
 
             # Simplify to a map from package name to a set of variants that are effectively used.
-            defined_variants = {
-                name: variants for name, (_, variants) in packages.items()
-            }
+            defined_variants = {name: variants for name, (_, variants) in packages.items()}
 
-            print("from spack.package import *\n")
+            packages_dir = pathlib.Path("pypi", "packages")
+            packages_dir.mkdir(parents=True, exist_ok=True)
+
             for name, (node, _) in packages.items():
-                sanitized_name = name.replace(".", "-")
-                class_name = mod_to_class(f"py-{sanitized_name}")
-                print(f"class {class_name}:")
-                print_package(node, defined_variants)
+                spack_name = f"py-{name}"
+                package_dir = packages_dir / spack_name
+                package_dir.mkdir(parents=True, exist_ok=True)
+                with open(package_dir / "package.py", "w") as f:
+                    print("from spack.package import *\n", file=f)
+                    print(f"class {mod_to_class(spack_name)}:", file=f)
+                    print_package(node, defined_variants, f)

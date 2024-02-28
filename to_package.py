@@ -18,7 +18,7 @@ import packaging.version as pv
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import Requirement
-from packaging.specifiers import Specifier, SpecifierSet
+from packaging.specifiers import InvalidSpecifier, Specifier, SpecifierSet
 from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
@@ -340,98 +340,118 @@ class Node:
         self.version_to_shasum = version_to_shasum
 
 
+def acceptable_version(version: str) -> Optional[vn.StandardVersion]:
+    """Attempt to parse as a version (using packaging and Spack), and if valid, return it."""
+    try:
+        v = pv.parse(version)
+        # Todo: epoch?
+        if v.is_prerelease or v.is_postrelease:
+            return None
+    except pv.InvalidVersion:
+        return None
+
+    try:
+        return vn.StandardVersion.from_string(version)
+    except ValueError:
+        return None
+
+
 def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, vn.VersionList] = defaultdict(vn.VersionList)
     version_to_shasum: Dict[vn.StandardVersion, str] = {}
-    for version, requires_dist, requires_python, sha256_blob in sqlite_cursor.execute(
+
+    query = sqlite_cursor.execute(
         """
-    SELECT version, requires_dist, requires_python, sha256 
-    FROM versions
-    WHERE name = ?""",
+        SELECT version, requires_dist, requires_python, sha256 
+        FROM versions
+        WHERE name = ?""",
         (name,),
-    ):
-        # We skip alpha/beta/rc etc releases, cause Spack's version ordering for them is wrong.
-        try:
-            packaging_version = pv.parse(version)
-        except pv.InvalidVersion:
-            continue
-        if (
-            packaging_version.pre is not None
-            or packaging_version.dev is not None
-            or packaging_version.post is not None
-        ):
-            continue
+    )
 
-        spack_version = vn.StandardVersion.from_string(version)
+    possible_versions = {
+        spack_version: (requires_dist, requires_python, sha256)
+        for version, requires_dist, requires_python, sha256 in query
+        if (spack_version := acceptable_version(version))
+    }
 
+    # Now drop old patch version numbers
+    if possible_versions:
+        sorted_versions = sorted(possible_versions.keys())
+        prev = sorted_versions[0]
+        for i in range(1, len(sorted_versions)):
+            curr = sorted_versions[i]
+            if len(curr) == 3 and curr.version[0:2] == prev.version[0:2]:
+                del possible_versions[prev]
+            prev = curr
+
+    for spack_version, (requires_dist, requires_python, sha256_blob) in possible_versions.items():
         # Database should only contain the latest version of a package.
         assert spack_version not in version_to_shasum
 
-        try:
-            to_insert = []
-            if requires_python:
-                # This is the "raw" version list.
-                python_ver = version_list_from_specifier(SpecifierSet(requires_python))
+        to_insert = []
+        if requires_python:
+            # This is the "raw" version list.
+            try:
+                specifier_set = SpecifierSet(requires_python)
+            except InvalidSpecifier:
+                print(f"{name}: invalid python specifier {requires_python}", file=sys.stderr)
+                continue
 
-                # First drop any unsupported versions.
-                python_ver.versions = [
-                    v for v in python_ver if not v.satisfies(UNSUPPORTED_PYTHON)
-                ]
+            python_ver = version_list_from_specifier(specifier_set)
 
-                # Finally, if the union is the entire space, it just means python is unconstrained.
-                union_with_unsupported = vn.VersionList()
-                union_with_unsupported.versions[:] = python_ver.versions
-                union_with_unsupported.add(UNSUPPORTED_PYTHON)
-                if union_with_unsupported != vn.any_version:
-                    to_insert.append(
-                        (("python", python_ver, None, None, frozenset()), spack_version)
+            # First drop any unsupported versions.
+            python_ver.versions = [v for v in python_ver if not v.satisfies(UNSUPPORTED_PYTHON)]
+
+            # Finally, if the union is the entire space, it just means python is unconstrained.
+            union_with_unsupported = vn.VersionList()
+            union_with_unsupported.versions[:] = python_ver.versions
+            union_with_unsupported.add(UNSUPPORTED_PYTHON)
+            if union_with_unsupported != vn.any_version:
+                to_insert.append((("python", python_ver, None, None, frozenset()), spack_version))
+
+        for requirement_str in json.loads(requires_dist):
+            r = Requirement(requirement_str)
+
+            # Translate markers to ^python@ constraints if possible.
+            if r.marker is not None:
+                try:
+                    marker_when_spec = marker_to_spec(r.marker, lambda variant: True)
+                except Exception as e:
+                    print(
+                        f"{name}: broken marker {r.marker}: {e.__class__.__name__}: {e}",
+                        file=sys.stderr,
                     )
-
-            for requirement_str in json.loads(requires_dist):
-                r = Requirement(requirement_str)
-
-                # Translate markers to ^python@ constraints if possible.
-                if r.marker is not None:
-                    try:
-                        marker_when_spec = marker_to_spec(r.marker, lambda variant: True)
-                    except Exception as e:
-                        print(
-                            f"{name}: broken marker {r.marker}: {e.__class__.__name__}: {e}",
-                            file=sys.stderr,
-                        )
-                        raise
-                    if marker_when_spec is False:
-                        # Statically evaluate to False: do not emit depends_on.
-                        continue
-                    elif marker_when_spec is True:
-                        # Statically evaluated to True: emit unconditional depends_on.
-                        r.marker = None
-                        marker_when_spec = None
-                    if marker_when_spec is not None:
-                        # Translated to a Spec: conditional depends_on.
-                        r.marker = None
-                else:
+                    raise
+                if marker_when_spec is False:
+                    # Statically evaluate to False: do not emit depends_on.
+                    continue
+                elif marker_when_spec is True:
+                    # Statically evaluated to True: emit unconditional depends_on.
+                    r.marker = None
                     marker_when_spec = None
+                if marker_when_spec is not None:
+                    # Translated to a Spec: conditional depends_on.
+                    r.marker = None
+            else:
+                marker_when_spec = None
 
-                to_insert.append(
+            to_insert.append(
+                (
                     (
-                        (
-                            normalized_name(r.name),
-                            version_list_from_specifier(r.specifier),
-                            marker_when_spec,
-                            r.marker,
-                            frozenset(r.extras),
-                        ),
-                        spack_version,
-                    )
+                        normalized_name(r.name),
+                        version_list_from_specifier(r.specifier),
+                        marker_when_spec,
+                        r.marker,
+                        frozenset(r.extras),
+                    ),
+                    spack_version,
                 )
+            )
 
-            # Delay registering a version until we know that it's valid.
-            for k, v in to_insert:
-                dep_to_when[k].add(v)
-            version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
-        except ValueError as e:
-            print(f"{name}: drop v{spack_version} due to: {e}", file=sys.stderr)
+        # Delay registering a version until we know that it's valid.
+        for k, v in to_insert:
+            dep_to_when[k].add(v)
+        version_to_shasum[spack_version] = "".join(f"{x:02x}" for x in sha256_blob)
 
     # Next, simplify a list of specific version to a range if they are consecutive.
     known_versions = sorted(version_to_shasum.keys())

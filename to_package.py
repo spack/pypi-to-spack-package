@@ -562,6 +562,79 @@ def print_package(
     print(file=f)
 
 
+def generate(pkg_name: str, extras: List[str]) -> None:
+    # Maps package name to (Node, seen_variants) tuples. The set of variants is those
+    # variants that can possibly be turned on. It's intended to list a subset of the
+    # variants defined by the package, as a means to omit variants like +test, +dev, and
+    # +doc etc (or whatever the package author decided to call them) that are not required
+    # by any of its dependents.
+    packages: Dict[str, Tuple[Node, Set[str]]] = {}
+
+    # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
+    # those that its dependent required (or required from the command line for the root).
+    queue: List[Tuple[str, Set[str], int]] = [(pkg_name, {*args.extras}, 0)]
+    i = 1
+    while queue:
+        name, with_variants, depth = queue.pop()
+
+        entry = packages.get(name)
+        seen_before = entry is not None
+
+        # Drop if we've already seen this package with the same variants enabled.
+        if entry and with_variants.issubset(entry[1]):
+            continue
+        print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
+
+        if seen_before:
+            node, seen_variants = entry
+            seen_variants.update(with_variants)
+        else:
+            node = populate(name, sqlite_cursor)
+            seen_variants = set(with_variants)
+            packages[name] = (node, seen_variants)
+
+        # If we have not seen this package before, we follow the unconditional edges
+        # (i.e. those with a when clause that does not require any variants) and the
+        # conditional ones that are enabled by the required variants.
+        for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
+            if child_name == "python":
+                continue
+            if (
+                not seen_before
+                and (
+                    # unconditional edges and conditional edges of all required
+                    when_spec is None
+                    or not when_spec.variants
+                    or all(variant in seen_variants for variant in when_spec.variants)
+                )
+                or (
+                    # conditional edges with new variants only
+                    seen_before
+                    and when_spec is not None
+                    and when_spec.variants
+                    and all(variant in seen_variants for variant in when_spec.variants)
+                )
+            ):
+                queue.append((child_name, extras, depth + 1))
+
+        i += 1
+
+    # Simplify to a map from package name to a set of variants that are effectively used.
+    defined_variants = {name: variants for name, (_, variants) in packages.items()}
+
+    packages_dir = pathlib.Path("pypi", "packages")
+    packages_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, (node, _) in packages.items():
+        spack_name = f"py-{name}"
+        package_dir = packages_dir / spack_name
+        package_dir.mkdir(parents=True, exist_ok=True)
+        with open(package_dir / "package.py", "w") as f:
+            print("from spack.package import *\n", file=f)
+            print(f"class {mod_to_class(spack_name)}:", file=f)
+            print_package(node, defined_variants, f)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
@@ -599,73 +672,4 @@ if __name__ == "__main__":
         print("Total versions:", len(node.version_to_shasum))
 
     elif args.command == "generate":
-        # Maps package name to (Node, seen_variants) tuples. The set of variants is those
-        # variants that can possibly be turned on. It's intended to list a subset of the
-        # variants defined by the package, as a means to omit variants like +test, +dev, and
-        # +doc etc (or whatever the package author decided to call them) that are not required
-        # by any of its dependents.
-        packages: Dict[str, Tuple[Node, Set[str]]] = {}
-
-        # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
-        # those that its dependent required (or required from the command line for the root).
-        queue: List[Tuple[str, Set[str], int]] = [(pkg_name, {*args.extras}, 0)]
-        i = 1
-        while queue:
-            name, with_variants, depth = queue.pop()
-
-            entry = packages.get(name)
-            seen_before = entry is not None
-
-            # Drop if we've already seen this package with the same variants enabled.
-            if entry and with_variants.issubset(entry[1]):
-                continue
-            print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
-
-            if seen_before:
-                node, seen_variants = entry
-                seen_variants.update(with_variants)
-            else:
-                node = populate(name, sqlite_cursor)
-                seen_variants = set(with_variants)
-                packages[name] = (node, seen_variants)
-
-            # If we have not seen this package before, we follow the unconditional edges
-            # (i.e. those with a when clause that does not require any variants) and the
-            # conditional ones that are enabled by the required variants.
-            for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
-                if child_name == "python":
-                    continue
-                if (
-                    not seen_before
-                    and (
-                        # unconditional edges and conditional edges of all required
-                        when_spec is None
-                        or not when_spec.variants
-                        or all(variant in seen_variants for variant in when_spec.variants)
-                    )
-                    or (
-                        # conditional edges with new variants only
-                        seen_before
-                        and when_spec is not None
-                        and when_spec.variants
-                        and all(variant in seen_variants for variant in when_spec.variants)
-                    )
-                ):
-                    queue.append((child_name, extras, depth + 1))
-
-            i += 1
-
-        # Simplify to a map from package name to a set of variants that are effectively used.
-        defined_variants = {name: variants for name, (_, variants) in packages.items()}
-
-        packages_dir = pathlib.Path("pypi", "packages")
-        packages_dir.mkdir(parents=True, exist_ok=True)
-
-        for name, (node, _) in packages.items():
-            spack_name = f"py-{name}"
-            package_dir = packages_dir / spack_name
-            package_dir.mkdir(parents=True, exist_ok=True)
-            with open(package_dir / "package.py", "w") as f:
-                print("from spack.package import *\n", file=f)
-                print(f"class {mod_to_class(spack_name)}:", file=f)
-                print_package(node, defined_variants, f)
+        generate(pkg_name, args.extras)

@@ -27,18 +27,31 @@ Convert Python PyPI entries to Spack `package.py`
 
    FROM `bigquery-public-data.pypi.distribution_metadata` AS x
 
-   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built both binary and pure python, in that case prefer sdist)
-   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y
-   ON (REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-") AND x.version = y.version AND x.packagetype = "bdist_wheel" AND y.packagetype = "bdist_wheel" AND y.python_version != "py3")
+   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built
+   -- both binary and pure python, in that case prefer sdist)
+   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y ON (
+    REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
+    AND x.version = y.version
+    AND x.packagetype = "bdist_wheel"
+    AND y.packagetype = "bdist_wheel"
+    AND y.python_version != "py3"
+   )
 
    -- Select sdist and universal wheels
-   WHERE (x.packagetype = "sdist" OR x.packagetype = "bdist_wheel" AND x.python_version = "py3") AND y.name IS NULL
+   WHERE (x.packagetype = "sdist" OR x.packagetype = "bdist_wheel" AND x.python_version = "py3")
+   AND y.name IS NULL
 
    -- Only pick the last (re)upload of (name, version, packagetype) tuples
-   QUALIFY ROW_NUMBER() OVER (PARTITION BY normalized_name, x.version, x.packagetype ORDER BY x.upload_time DESC) = 1
+   QUALIFY ROW_NUMBER() OVER (
+     PARTITION BY normalized_name, x.version, x.packagetype
+     ORDER BY x.upload_time DESC
+   ) = 1
 
    -- If there are both universal wheels and sdist, pick the wheel
-   AND ROW_NUMBER() OVER (PARTITION BY normalized_name, x.version ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END) = 1
+   AND ROW_NUMBER() OVER (
+     PARTITION BY normalized_name, x.version
+     ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END
+   ) = 1
    ```
    which should say something like "Successfully exported 5651880 rows into 101 files".
 3. Download the files using:

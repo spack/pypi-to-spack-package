@@ -150,6 +150,11 @@ class PyBlack:
     `platform_system`, `platform_version`, `implementation_version` are still to-do in as far as
     they can be translated to a `Spec`.
 
+## TODO
+
+- [ ] `url`
+- [ ] Strategy for dropping old patch versions
+
 ## License
 
 This project is part of Spack. Spack is distributed under the terms of both the

@@ -18,6 +18,7 @@ Convert Python PyPI entries to Spack `package.py`
    AS
 
    SELECT
+     -- https://packaging.python.org/en/latest/specifications/name-normalization/
      REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") AS normalized_name,
      x.version,
      x.requires_dist,

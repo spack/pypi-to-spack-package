@@ -665,8 +665,8 @@ if __name__ == "__main__":
     p_generate.add_argument(
         "extras", nargs="*", help="Extras / variants to define on given package"
     )
-    p_describe = subparsers.add_parser("describe", help="Describe a package")
-    p_describe.add_argument("package", help="The package name on PyPI")
+    p_info = subparsers.add_parser("info", help="Show basic info about database or package")
+    p_info.add_argument("package", nargs="?", help="package name on PyPI")
 
     args = parser.parse_args()
 
@@ -676,19 +676,22 @@ if __name__ == "__main__":
 
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()
-    pkg_name = normalized_name(args.package)
 
-    if args.command == "describe":
-        node = populate(pkg_name, sqlite_cursor)
-        variants = set(
-            variant
-            for _, _, when_spec, _, _ in node.dep_to_when.keys()
-            if when_spec
-            for variant in when_spec.variants
-        )
-        print("Normalized name:", node.name)
-        print("Variants:", " ".join(variants) if variants else "none")
-        print("Total versions:", len(node.version_to_shasum))
+    if args.command == "info":
+        if args.package:
+            node = populate(normalized_name(args.package), sqlite_cursor)
+            variants = set(
+                variant
+                for _, _, when_spec, _, _ in node.dep_to_when.keys()
+                if when_spec
+                for variant in when_spec.variants
+            )
+            print("Normalized name:", node.name)
+            print("Variants:", " ".join(variants) if variants else "none")
+            print("Total versions:", len(node.version_to_shasum))
+        else:
+            print("Total packages:", sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0])
+            print("Total versions:", sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0])
 
     elif args.command == "generate":
-        generate(pkg_name, args.extras)
+        generate(normalized_name(args.package), args.extras)

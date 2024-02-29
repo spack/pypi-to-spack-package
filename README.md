@@ -8,15 +8,44 @@ Convert Python PyPI entries to Spack `package.py`
 2. Run the following query
 
    ```sql
-    SELECT name, version, requires_dist, requires_python, upload_time, sha256_digest
-    FROM `bigquery-public-data.pypi.distribution_metadata`
-    WHERE packagetype = "sdist"
-    ORDER BY upload_time DESC
-   ```
+   EXPORT DATA OPTIONS(
+     compression="GZIP",
+     uri="gs://stabbles/pypi-export/pypi-*.json.gz",
+     format="JSON",
+     overwrite=true
+   )
 
-   should produce about 5.5M rows.
-3. Hit "Save Results" > "JSONL" and download from Google drive.
-4. Run `python3 to_sqlite.py <path to json file>` to convert to sqlite.
+   AS
+
+   SELECT
+     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") AS normalized_name,
+     x.version,
+     x.requires_dist,
+     x.requires_python,
+     x.sha256_digest,
+     x.packagetype = "sdist" AS is_sdist
+
+   FROM `bigquery-public-data.pypi.distribution_metadata` AS x
+
+   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built both binary and pure python, in that case prefer sdist)
+   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y
+   ON (REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-") AND x.version = y.version AND x.packagetype = "bdist_wheel" AND y.packagetype = "bdist_wheel" AND y.python_version != "py3")
+
+   -- Select sdist and universal wheels
+   WHERE (x.packagetype = "sdist" OR x.packagetype = "bdist_wheel" AND x.python_version = "py3") AND y.name IS NULL
+
+   -- Only pick the last (re)upload of (name, version, packagetype) tuples
+   QUALIFY ROW_NUMBER() OVER (PARTITION BY normalized_name, x.version, x.packagetype ORDER BY x.upload_time DESC) = 1
+
+   -- If there are both universal wheels and sdist, pick the wheel
+   AND ROW_NUMBER() OVER (PARTITION BY normalized_name, x.version ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END) = 1
+   ```
+   which should say something like "Successfully exported 5651880 rows into 101 files".
+3. Download the files using:
+   ```console
+   $ gsutil -m cp -r gs://<bucket>/pypi-export .
+   ```
+4. Run `python3 import.py pypi-export/` to import as sqlite.
 5. Install `packaging` if not installed already
 5. Run `spack-python to_package.py <pkg>` to convert to `package.py`.
 
@@ -24,7 +53,11 @@ Convert Python PyPI entries to Spack `package.py`
 ## Example
 
 ```console
-$ spack-python to_package.py describe black
+$ spack-python to_package.py info
+Total packages: 592120
+Total versions: 5651880
+
+$ spack-python to_package.py info black
 Normalized name: black
 Variants: jupyter colorama d uvloop
 Total versions: 19

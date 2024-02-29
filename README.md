@@ -38,8 +38,10 @@ Convert Python PyPI entries to Spack `package.py`
    )
 
    -- Select sdist and universal wheels
-   WHERE (x.packagetype = "sdist" OR x.packagetype = "bdist_wheel" AND x.python_version = "py3")
-   AND y.name IS NULL
+   WHERE (
+     x.packagetype = "sdist"
+     OR x.packagetype = "bdist_wheel" AND x.python_version = "py3"
+   ) AND y.name IS NULL
 
    -- Only pick the last (re)upload of (name, version, packagetype) tuples
    QUALIFY ROW_NUMBER() OVER (

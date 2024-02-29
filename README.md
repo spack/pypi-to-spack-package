@@ -47,7 +47,7 @@ Convert Python PyPI entries to Spack `package.py`
    ```
 4. Run `python3 import.py pypi-export/` to import as sqlite.
 5. Install `packaging` if not installed already
-5. Run `spack-python to_package.py <pkg>` to convert to `package.py`.
+6. Run `spack-python package.py <pkg>` to convert to `package.py`.
 
 
 ## Example

@@ -10,7 +10,7 @@ Convert Python PyPI entries to Spack `package.py`
    ```sql
    EXPORT DATA OPTIONS(
      compression="GZIP",
-     uri="gs://stabbles/pypi-export/pypi-*.json.gz",
+     uri="gs://<bucket>/pypi-export/pypi-*.json.gz",
      format="JSON",
      overwrite=true
    )

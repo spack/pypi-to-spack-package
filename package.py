@@ -690,8 +690,14 @@ if __name__ == "__main__":
             print("Variants:", " ".join(variants) if variants else "none")
             print("Total versions:", len(node.version_to_shasum))
         else:
-            print("Total packages:", sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0])
-            print("Total versions:", sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0])
+            print(
+                "Total packages:",
+                sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0],
+            )
+            print(
+                "Total versions:",
+                sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0],
+            )
 
     elif args.command == "generate":
         generate(normalized_name(args.package), args.extras)

@@ -3,12 +3,12 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import gzip
 import json
+import os
 import re
 import sqlite3
 import sys
-import gzip
-import os
 
 conn = sqlite3.connect("data.db")
 c = conn.cursor()
@@ -36,13 +36,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS name_index ON versions (name, version)
 
 def insert(entries):
     c.executemany(
-            """
+        """
     INSERT INTO versions (name, version, requires_dist, requires_python, sha256, is_sdist)
     VALUES (?, ?, ?, ?, ?, ?)
     """,
-            entries,
-        )
+        entries,
+    )
     conn.commit()
+
 
 path = sys.argv[1] if len(sys.argv) > 1 else "pypi-export"
 

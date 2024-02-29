@@ -65,23 +65,16 @@ Variants: jupyter colorama d uvloop
 Total versions: 19
 ```
 
-Then generate `package.py` files.
+Then run
 
 ```console
 $ spack-python package.py generate black jupyter colorama d uvloop
 ```
 
-outputs a large file
+to generate tons of `package.py` files in the `pypi/` directory, for `black` and its dependencies:
 
 ```console
-$ wc -l out.py
-8896 out.py
-```
-
-with `package.py` definitions for `black` and all its dependencies
-
-```console
-$ head -n50 out.py 
+$ cat pypi/packges/py-black/package.py
 ```
 
 ```python

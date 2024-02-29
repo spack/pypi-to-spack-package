@@ -52,19 +52,23 @@ Convert Python PyPI entries to Spack `package.py`
 
 ## Example
 
+First have a look at the database, and see what versions and variants are available for `black`.
+
 ```console
-$ spack-python to_package.py info
+$ spack-python package.py info
 Total packages: 592120
 Total versions: 5651880
 
-$ spack-python to_package.py info black
+$ spack-python package.py info black
 Normalized name: black
 Variants: jupyter colorama d uvloop
 Total versions: 19
 ```
 
+Then generate `package.py` files.
+
 ```console
-$ spack-python to_package.py generate black jupyter colorama d uvloop > out.py
+$ spack-python package.py generate black jupyter colorama d uvloop
 ```
 
 outputs a large file
@@ -86,14 +90,10 @@ from spack.package import *
 class PyBlack:
     version("24.2.0", sha256="bce4f25c27c3435e4dace4815bcb2008b87e167e3bf4ee47ccdc5ce906eb4894")
     version("24.1.1", sha256="48b5760dcbfe5cf97fd4fba23946681f3a81514c6ab8a45b50da67ac8fbc6c7b")
-    version("24.1.0", sha256="30fbf768cd4f4576598b1db0202413fafea9a227ef808d1a12230c643cefe9fc")
     version("23.12.1", sha256="4ce3ef14ebe8d9509188014d96af1c456a910d5b5cbf434a09fef7e024b3d0d5")
-    version("23.12.0", sha256="330a327b422aca0634ecd115985c1c7fd7bdb5b5a2ef8aa9888a82e2ebe9437a")
     version("23.11.0", sha256="4c68855825ff432d197229846f971bc4d6666ce90492e5b02013bcaca4d9ab05")
     version("23.10.1", sha256="1f8ce316753428ff68749c65a5f7844631aa18c8679dfd3ca9dc1a289979c258")
-    version("23.10.0", sha256="31b9f87b277a68d0e99d2905edae08807c007973eaa609da5f0c62def6b7c0bd")
     version("23.9.1", sha256="24b6b3ff5c6d9ea08a8888f6977eae858e1f340d7260cf56d70a49823236b62d")
-    version("23.9.0", sha256="3511c8a7e22ce653f89ae90dfddaf94f3bb7e2587a245246572d3b9c92adf066")
     version("23.7.0", sha256="022a582720b0d9480ed82576c920a8c1dde97cc38ff11d8d8859b3bd6ca9eedb")
     version("23.3.0", sha256="1c7b8d606e728a41ea1ccbd7264677e494e87cf630e399262ced92d4a8dac940")
     version("23.1.0", sha256="b0bd97bea8903f5a2ba7219257a44e3f1f9d00073d6cc1add68f0beec69692ac")
@@ -104,16 +104,14 @@ class PyBlack:
     version("22.3.0", sha256="35020b8886c022ced9282b51b5a875b6d1ab0c387b31a065b84db7c33085ca79")
     version("22.1.0", sha256="a7c0192d35635f6fc1174be575cb7915e92e5dd629ee79fdaf0dcfa41a80afb5")
 
+    variant("uvloop", default=False)
     variant("jupyter", default=False)
     variant("colorama", default=False)
-    variant("uvloop", default=False)
     variant("d", default=False)
 
     with default_args(deptype=("build", "run")):
-        depends_on("python@3.7:", when="@22.10.0:23.3")
         depends_on("python@3.8:", when="@23.7.0:")
-        depends_on("py-aiohttp@3.7.4:", when="@23.12.0")
-        depends_on("py-aiohttp@3.7.4:", when="@22.10.0:23.11,23.12.1:+d")
+        depends_on("py-aiohttp@3.7.4:", when="@22.10.0:+d")
         depends_on("py-click@8.0.0:", when="@22.10.0:")
         depends_on("py-colorama@0.4.3:", when="@22.10.0:+colorama")
         depends_on("py-ipython@7.8.0:", when="@22.10.0:+jupyter")
@@ -125,7 +123,7 @@ class PyBlack:
         depends_on("py-tomli@1.1.0:", when="@23.1.0: ^python@:3.10")
         depends_on("py-typed-ast@1.4.2:", when="@22.10.0:23.3 ^python@:3.7")
         depends_on("py-typing-extensions@3.10.0.0:", when="@22.10.0:23.7 ^python@:3.9")
-        depends_on("py-typing-extensions@4.0.1:", when="@23.9.0: ^python@:3.10")
+        depends_on("py-typing-extensions@4.0.1:", when="@23.9.1: ^python@:3.10")
         depends_on("py-uvloop@0.15.2:", when="@22.10.0:+uvloop")
 
         # marker: python_full_version < "3.11.0a7"

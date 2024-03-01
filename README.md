@@ -77,7 +77,7 @@ Total versions: 5651880
 
 $ spack-python src/package.py info black
 Normalized name: black
-Variants: jupyter colorama d uvloop
+Variants: colorama d jupyter uvloop
 Total versions: 19
 ```
 

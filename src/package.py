@@ -703,7 +703,7 @@ if __name__ == "__main__":
                 for variant in when_spec.variants
             )
             print("Normalized name:", node.name)
-            print("Variants:", " ".join(variants) if variants else "none")
+            print("Variants:", " ".join(sorted(variants)) if variants else "none")
             print("Total versions:", len(node.version_to_shasum))
         else:
             print(

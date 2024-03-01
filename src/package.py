@@ -569,7 +569,7 @@ def print_package(
                 comment = "variants statically unused"
 
         pkg_name = "python" if child == "python" else f"py-{child}"
-        extras_variants = "".join(f"+{v}" for v in extras)
+        extras_variants = "".join(f"+{v}" for v in sorted(extras))
         dep_spec = Spec(f"{pkg_name} {extras_variants}")
         dep_spec.versions = version_list
         line = f'depends_on("{dep_spec}"{when_str})'

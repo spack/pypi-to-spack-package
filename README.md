@@ -61,9 +61,9 @@ Convert Python PyPI entries to Spack `package.py`
    ```console
    $ gsutil -m cp -r gs://<bucket>/pypi-export .
    ```
-4. Run `python3 import.py pypi-export/` to import as sqlite.
+4. Run `python3 src/import.py pypi-export/` to import as sqlite.
 5. Install `packaging` if not installed already
-6. Run `spack-python package.py <pkg>` to convert to `package.py`.
+6. Run `spack-python src/package.py <pkg>` to convert to `package.py`.
 
 
 ## Example
@@ -71,11 +71,11 @@ Convert Python PyPI entries to Spack `package.py`
 First have a look at the database, and see what versions and variants are available for `black`.
 
 ```console
-$ spack-python package.py info
+$ spack-python src/package.py info
 Total packages: 592120
 Total versions: 5651880
 
-$ spack-python package.py info black
+$ spack-python src/package.py info black
 Normalized name: black
 Variants: jupyter colorama d uvloop
 Total versions: 19
@@ -84,7 +84,7 @@ Total versions: 19
 Then run
 
 ```console
-$ spack-python package.py generate black jupyter colorama d uvloop
+$ spack-python src/package.py generate black jupyter colorama d uvloop
 ```
 
 to generate tons of `package.py` files in the `pypi/` directory, for `black` and its dependencies:

@@ -150,9 +150,8 @@ class PyBlack(PythonPackage):
   - ✅ `extra == "a" and extra == "b"`: works, and gets translated into `when="+a +b"`
   - ✅ `python_version <= "3.8" or python_version >= "3.10`: works, because the `or` operator
     can be translated into a version list `^python@:3.8,3.10:`.
-  - ❌ `extra == "foo" or extra == "bar"`: can only be expressed in Spack through two separate
-    `depends_on(..., when="+foo)` and `depends_on(..., when="+bar)` statements, which is not
-    yet implemented.
+  - ✅ `extra == "foo" or extra == "bar"` is expressed as two separate `depends_on` statements:
+    `depends_on(..., when="+foo)` and `depends_on(..., when="+bar)`.
   - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
     because the `in` and `not in` operators use the right-hand side as literal string, instead of
     a version list. So, I have not implemented this.

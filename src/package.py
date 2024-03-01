@@ -145,7 +145,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
         return None
 
 
-def _eval_constraint(node: tuple, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
+def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
     # TODO: os_name, sys_platform, platform_machine, platform_release, platform_system,
     # platform_version, implementation_version
 
@@ -190,9 +190,9 @@ def _eval_constraint(node: tuple, accept_extra: Callable[[str], bool]) -> Union[
     try:
         if variable.value == "extra":
             if op.value == "==":
-                return Spec(f"+{value.value}") if accept_extra(value.value) else False
+                return [Spec(f"+{value.value}")]
             elif op.value == "!=":
-                return Spec(f"~{value.value}") if accept_extra(value.value) else True
+                return [Spec(f"~{value.value}")]
     except SpecSyntaxError as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None
@@ -211,16 +211,44 @@ def _eval_constraint(node: tuple, accept_extra: Callable[[str], bool]) -> Union[
 
     spec = Spec("^python")
     spec.dependencies("python")[0].versions = versions
-    return spec
+    return [spec]
 
 
-def _eval_node(node, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
+def _eval_node(node) -> Union[None, bool, List[Spec]]:
     if isinstance(node, tuple):
-        return _eval_constraint(node, accept_extra)
-    return _marker_to_spec(node, accept_extra)
+        return _eval_constraint(node)
+    return _marker_to_spec(node)
 
 
-def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[None, bool, Spec]:
+def intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
+    """Expand: (a or b) and (c or d) = (a and c) or (a and d) or (b and c) or (b and d)
+    where `and` is spec intersection."""
+    specs: List[Spec] = []
+    for l in lhs:
+        for r in rhs:
+            intersection = l.copy()
+            try:
+                intersection.constrain(r)
+            except UnsatisfiableSpecError:
+                # empty intersection
+                continue
+            specs.append(intersection)
+    return list(set(specs))
+
+
+def union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
+    """This case is trivial: (a or b) or (c or d) = a or b or c or d, BUT do a simplification
+    in case the rhs only expresses constraints on versions."""
+    if len(rhs) == 1 and not rhs[0].variants:
+        python, *_ = rhs[0].dependencies("python")
+        for l in lhs:
+            l.versions.add(python.versions)
+        return lhs
+
+    return list(set(lhs + rhs))
+
+
+def _marker_to_spec(node: list) -> Union[None, bool, List[Spec]]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -238,7 +266,7 @@ def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[No
 
     assert isinstance(node, list) and len(node) > 0
 
-    lhs = _eval_node(node[0], accept_extra)
+    lhs = _eval_node(node[0])
 
     for i in range(2, len(node), 2):
         # Actually op should be constant: x and y and z. we don't assert it here.
@@ -247,7 +275,7 @@ def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[No
         if op == "and":
             if lhs is False:
                 return False
-            rhs = _eval_node(node[i], accept_extra)
+            rhs = _eval_node(node[i])
             if rhs is False:
                 return False
             elif lhs is None or rhs is None:
@@ -255,17 +283,14 @@ def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[No
             elif lhs is True:
                 lhs = rhs
             elif rhs is not True:  # Intersection of specs
-                try:
-                    lhs.constrain(rhs)
-                except UnsatisfiableSpecError:
-                    # This happens when people have no clue what they're doing, and such people
-                    # exist. E.g. python_version > "3" and python_version < "3.11" is
-                    # unsatisfiable.
+                lhs = intersection(lhs, rhs)
+                # The intersection can be empty, which means it's statically false.
+                if not lhs:
                     return False
         elif op == "or":
             if lhs is True:
                 return True
-            rhs = _eval_node(node[i], accept_extra)
+            rhs = _eval_node(node[i])
             if rhs is True:
                 return True
             elif lhs is None or rhs is None:
@@ -273,23 +298,15 @@ def _marker_to_spec(node: list, accept_extra: Callable[[str], bool]) -> Union[No
             elif lhs is False:
                 lhs = rhs
             elif rhs is not False:
-                # Union: currently only python versions can be unioned. The rest would need
-                # multiple depends_on statements -- not supported yet.
-                if lhs.variants or rhs.variants:
-                    return None
-                p_lhs, p_rhs = lhs.dependencies("python"), rhs.dependencies("python")
-                if not (p_lhs and p_rhs):
-                    return None
-                p_lhs[0].versions.add(p_rhs[0].versions)
+                lhs = union(lhs, rhs)
     return lhs
 
 
-def marker_to_spec(m: Marker, accept_extra: Callable[[str], bool]) -> Union[bool, None, Spec]:
-    """Evaluate the marker expression tree either (1) as a Spack spec if possible, (2) statically
-    as True or False given that we only support cpython, (3) None if we can't translate it into
-    Spack DSL."""
-    # TODO: simplify expression we can evaluate statically partially.
-    return _marker_to_spec(m._markers, accept_extra)
+def marker_to_spec(m: Marker) -> Union[bool, None, List[Spec]]:
+    """Evaluate the marker expression tree either (1) as a list of specs that constitute the when
+    conditions, (2) statically as True or False given that we only support cpython, (3) None if
+    we can't translate it into Spack DSL."""
+    return _marker_to_spec(m._markers)
 
 
 def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
@@ -437,14 +454,7 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
 
             # Translate markers to ^python@ constraints if possible.
             if r.marker is not None:
-                try:
-                    marker_when_spec = marker_to_spec(r.marker, lambda variant: True)
-                except Exception as e:
-                    print(
-                        f"{name}: broken marker {r.marker}: {e.__class__.__name__}: {e}",
-                        file=sys.stderr,
-                    )
-                    raise
+                marker_when_spec = marker_to_spec(r.marker)
                 if marker_when_spec is False:
                     # Statically evaluate to False: do not emit depends_on.
                     continue
@@ -458,18 +468,19 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
             else:
                 marker_when_spec = None
 
-            to_insert.append(
-                (
+            for when in marker_when_spec or [None]:
+                to_insert.append(
                     (
-                        normalized_name(r.name),
-                        version_list_from_specifier(r.specifier),
-                        marker_when_spec,
-                        r.marker,
-                        frozenset(r.extras),
-                    ),
-                    spack_version,
+                        (
+                            normalized_name(r.name),
+                            version_list_from_specifier(r.specifier),
+                            when,
+                            r.marker,
+                            frozenset(r.extras),
+                        ),
+                        spack_version,
+                    )
                 )
-            )
 
         # Delay registering a version until we know that it's valid.
         for k, v in to_insert:

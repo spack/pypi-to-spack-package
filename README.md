@@ -90,7 +90,7 @@ $ spack-python src/package.py generate black jupyter colorama d uvloop
 to generate tons of `package.py` files in the `pypi/` directory, for `black` and its dependencies:
 
 ```console
-$ cat pypi/packges/py-black/package.py
+$ cat pypi/packages/py-black/package.py
 ```
 
 ```python
@@ -113,30 +113,30 @@ class PyBlack:
     version("22.3.0", sha256="35020b8886c022ced9282b51b5a875b6d1ab0c387b31a065b84db7c33085ca79")
     version("22.1.0", sha256="a7c0192d35635f6fc1174be575cb7915e92e5dd629ee79fdaf0dcfa41a80afb5")
 
-    variant("uvloop", default=False)
-    variant("jupyter", default=False)
     variant("colorama", default=False)
     variant("d", default=False)
+    variant("jupyter", default=False)
+    variant("uvloop", default=False)
 
     with default_args(deptype=("build", "run")):
-        depends_on("python@3.8:", when="@23.7.0:")
-        depends_on("py-aiohttp@3.7.4:", when="@22.10.0:+d")
-        depends_on("py-click@8.0.0:", when="@22.10.0:")
-        depends_on("py-colorama@0.4.3:", when="@22.10.0:+colorama")
-        depends_on("py-ipython@7.8.0:", when="@22.10.0:+jupyter")
-        depends_on("py-mypy-extensions@0.4.3:", when="@22.10.0:")
-        depends_on("py-packaging@22.0:", when="@23.1.0:")
-        depends_on("py-pathspec@0.9.0:", when="@22.10.0:")
-        depends_on("py-platformdirs@2:", when="@22.10.0:")
-        depends_on("py-tokenize-rt@3.2.0:", when="@22.10.0:+jupyter")
-        depends_on("py-tomli@1.1.0:", when="@23.1.0: ^python@:3.10")
-        depends_on("py-typed-ast@1.4.2:", when="@22.10.0:23.3 ^python@:3.7")
-        depends_on("py-typing-extensions@3.10.0.0:", when="@22.10.0:23.7 ^python@:3.9")
-        depends_on("py-typing-extensions@4.0.1:", when="@23.9.1: ^python@:3.10")
-        depends_on("py-uvloop@0.15.2:", when="@22.10.0:+uvloop")
+        depends_on("python@3.8:", when="@23.7:")
+        depends_on("py-aiohttp@3.7.4:", when="@22.10:+d")
+        depends_on("py-click@8.0.0:", when="@22.10:")
+        depends_on("py-colorama@0.4.3:", when="@22.10:+colorama")
+        depends_on("py-ipython@7.8.0:", when="@22.10:+jupyter")
+        depends_on("py-mypy-extensions@0.4.3:", when="@22.10:")
+        depends_on("py-packaging@22.0:", when="@23.1:")
+        depends_on("py-pathspec@0.9.0:", when="@22.10:")
+        depends_on("py-platformdirs@2:", when="@22.10:")
+        depends_on("py-tokenize-rt@3.2.0:", when="@22.10:+jupyter")
+        depends_on("py-tomli@1.1.0:", when="@23.1: ^python@:3.10")
+        depends_on("py-typed-ast@1.4.2:", when="@22.10:23.3 ^python@:3.7")
+        depends_on("py-typing-extensions@3.10.0.0:", when="@22.10:23.7 ^python@:3.9")
+        depends_on("py-typing-extensions@4.0.1:", when="@23.9: ^python@:3.10")
+        depends_on("py-uvloop@0.15.2:", when="@22.10:+uvloop")
 
         # marker: python_full_version < "3.11.0a7"
-        # depends_on("py-tomli@1.1.0:", when="@22.10.0:22.12")
+        # depends_on("py-tomli@1.1.0:", when="@22.10:22.12")
 ```
 
 ## Issues

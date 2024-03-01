@@ -420,12 +420,17 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
             # First drop any unsupported versions.
             python_ver.versions = [v for v in python_ver if not v.satisfies(UNSUPPORTED_PYTHON)]
 
-            # Finally, if the union is the entire space, it just means python is unconstrained.
-            union_with_unsupported = vn.VersionList()
-            union_with_unsupported.versions[:] = python_ver.versions
-            union_with_unsupported.add(UNSUPPORTED_PYTHON)
-            if union_with_unsupported != vn.any_version:
-                to_insert.append((("python", python_ver, None, None, frozenset()), spack_version))
+            # If there is at least one condition and the union is not the entire version space,
+            # then there is a non-trivial constraint on python we need to emit.
+            if python_ver.versions:
+                # Finally,
+                union_with_unsupported = vn.VersionList()
+                union_with_unsupported.versions[:] = python_ver.versions
+                union_with_unsupported.add(UNSUPPORTED_PYTHON)
+                if union_with_unsupported != vn.any_version:
+                    to_insert.append(
+                        (("python", python_ver, None, None, frozenset()), spack_version)
+                    )
 
         for requirement_str in json.loads(requires_dist):
             r = Requirement(requirement_str)

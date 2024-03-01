@@ -308,19 +308,33 @@ def normalized_name(name):
     return re.sub(NAME_REGEX, "-", name).lower()
 
 
-def construct_nice_range(
-    lo: vn.StandardVersion, hi: vn.StandardVersion, next: vn.StandardVersion
-) -> vn.ClosedOpenRange:
-    """If the last entry is say 1.2.3, and the next known version 1.3.0, we'd like to use @:1.2
-    instead of @:1.2.3, since it leads to smaller diffs if a patch version is added later.
-    """
-    num = len(hi)
-    if num <= 1:
-        return vn.VersionRange(lo, hi)
-    version_range = vn.VersionRange(lo, hi.up_to(num - 1))
-    if next.satisfies(version_range):
-        return vn.VersionRange(lo, hi)
-    return version_range
+def best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.StandardVersion:
+    """Return the most general upperound that includes curr but not next.
+    Invariant is that curr < next."""
+
+    # i is the first index where the two versions differ.
+    i = 1
+    m = min(len(curr), len(next))
+    while i < m and curr.version[i] == next.version[i]:
+        i += 1
+
+    # Pad with ".0"
+    if i > m:
+        return vn.StandardVersion.from_string(f"{curr}{(len(next) - len(curr)) * '.0'}")
+
+    # Truncate if necessary
+    return curr if i == m else curr.up_to(i + 1)
+
+
+def best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
+    i = 1
+    m = min(len(prev), len(curr))
+    while i < m and prev.version[i] == curr.version[i]:
+        i += 1
+
+    # if prev is a prefix of curr, curr must have an additional component.
+    # if not a prefix, truncate on the first differing component.
+    return curr if i == m else curr.up_to(i + 1)
 
 
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
@@ -460,41 +474,37 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
         if when == vn.any_version:
             continue
 
-        # It's guaranteed to be a sorted list of StandardVersion now.
-        lo = when[0]
-
         # Find corresponding index
-        i, j = known_versions.index(lo) + 1, 1
-        new_list = []
+        i, j = known_versions.index(when[0]) + 1, 1
+        new_versions: List[vn.ClosedOpenRange] = []
 
         # If the first when entry corresponds to the first known version,
         # use (-inf, ..] as lowerbound.
-        if i == 0:
+        if i == 1:
             lo = vn.StandardVersion.typemin()
+        else:
+            lo = best_lowerbound(known_versions[i - 2], when[0])
 
         while j < len(when):
-            if known_versions[i] == when[j]:
-                # Consecutive: absorb in range.
-                i += 1
-            else:
+            if known_versions[i] != when[j]:
                 # Not consecutive: emit a range.
-                new_list.append(
-                    construct_nice_range(lo=lo, hi=when[j - 1], next=known_versions[i])
+                new_versions.append(
+                    vn.VersionRange(lo, best_upperbound(when[j - 1], known_versions[i]))
                 )
-                lo = when[j]
-                i = known_versions.index(lo) + 1
-
+                i = known_versions.index(when[j])
+                lo = best_lowerbound(known_versions[i - 1], when[j])
+            i += 1
             j += 1
 
         # Similarly, if the last entry corresponds to the last known version,
         # assume the dependency continues to be used: [x, inf).
         if i == len(known_versions):
-            version_range = vn.VersionRange(lo, vn.StandardVersion.typemax())
+            hi = vn.StandardVersion.typemax()
         else:
-            version_range = construct_nice_range(lo=lo, hi=when[j - 1], next=known_versions[i])
+            hi = best_upperbound(when[j - 1], known_versions[i])
 
-        new_list.append(version_range)
-        when.versions = new_list
+        new_versions.append(vn.VersionRange(lo, hi))
+        when.versions = new_versions
     return Node(name, dep_to_when=dep_to_when, version_to_shasum=version_to_shasum)
 
 

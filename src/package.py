@@ -30,7 +30,7 @@ from spack.version.version_types import VersionStrComponent, prev_version_str_co
 UNSUPPORTED_PYTHON = vn.from_string(":3.6")
 
 # The prefix to use for Pythohn package names in Spack.
-SPACK_PREFIX = "new-py-"
+SPACK_PREFIX = "pypi-"
 
 
 def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
@@ -675,6 +675,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
         with open(package_dir / "package.py", "w") as f:
             print("from spack.package import *\n\n", file=f)
             print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
+            print('    url = "https://www.example.com/file.tar.gz"\n', file=f)
             print_package(node, defined_variants, f)
 
 

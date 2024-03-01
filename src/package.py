@@ -96,7 +96,10 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
 
     # `python_version > "3"` is translated as `@3.1:`
     # `python_version > "3.6"` is translated as `@3.7:`
+    # `python_version > "3.6.1"` is translated as `@3.7:`
     # `python_version < "3"` is translated as `@:2`
+    # `python_version < "3.6"` is translated as `@:3.5`
+    # `python_version < "3.6.1"` is translated as `@:3.6`  # note...
     # `python_version == "3"` is translated as `@3.0`
     # `python_full_version > "3"` is translated as `@3.0.1:`
     # `python_full_version > "3.6"` is translated as `@3.6.1:`
@@ -110,11 +113,11 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
     try:
         vv = pv.Version(value)
     except pv.InvalidVersion:
-        print(f"could not parse `{value}` as version", file=sys.stderr)
+        print(f"could not parse version: `{variable} {op} {value}`", file=sys.stderr)
         return None
 
-    if vv.is_prerelease or vv.is_postrelease or vv.is_devrelease or vv.epoch:
-        print(f"dunno about: `{variable} {op} {value}`", file=sys.stderr)
+    if vv.is_prerelease or vv.is_postrelease or vv.epoch:
+        print(f"cannot deal with version: `{variable} {op} {value}`", file=sys.stderr)
         return None
     if variable == "python_version":
         v = vn.StandardVersion.from_string(f"{vv.major}.{vv.minor}")
@@ -128,6 +131,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
     elif op == ">=":
         return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
     elif op == "<":
+        # TODO: This is currently wrong for python_version < x.y.z.
         return vn.VersionList(
             [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
         )
@@ -140,9 +144,8 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
                 vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
             ]
         )
-    else:
-        # We don't support this comparison.
-        return None
+    print(f"cannot deal with operator: `{variable} {op} {value}`", file=sys.stderr)
+    return None
 
 
 def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:

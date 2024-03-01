@@ -583,7 +583,7 @@ def print_package(
             uncommented_lines.append(line)
 
     if uncommented_lines:
-        print('    with default_args(deptype=("build", "run")):', file=f)
+        print('    with default_args(type=("build", "run")):', file=f)
         for line in uncommented_lines:
             print(f"        {line}", file=f)
 

@@ -119,7 +119,7 @@ class PyBlack(PythonPackage):
     variant("jupyter", default=False)
     variant("uvloop", default=False)
 
-    with default_args(deptype=("build", "run")):
+    with default_args(type=("build", "run")):
         depends_on("python@3.8:", when="@23.7:")
         depends_on("py-aiohttp@3.7.4:", when="@22.10:+d")
         depends_on("py-click@8.0.0:", when="@22.10:")

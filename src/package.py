@@ -5,6 +5,7 @@
 
 import argparse
 import io
+import itertools
 import json
 import os
 import pathlib
@@ -537,8 +538,8 @@ def print_package(
         print(file=f)
 
     # Then the depends_on bits.
-    uncommented_lines = []
-    commented_lines = []
+    uncommented_lines: List[str] = []
+    commented_lines: List[Tuple[str, str]] = []
     for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
         child, version_list, when_spec, marker, extras = k
         when = node.dep_to_when[k]
@@ -583,10 +584,12 @@ def print_package(
         for line in uncommented_lines:
             print(f"        {line}", file=f)
 
-    for line, comment in commented_lines:
-        print(file=f)
-        print(f"        # {comment}", file=f)
-        print(f"        # {line}", file=f)
+    # Group commented lines by comment
+    commented_lines.sort(key=lambda x: x[1])
+    for comment, group in itertools.groupby(commented_lines, key=lambda x: x[1]):
+        print(f"\n        # {comment}", file=f)
+        for line, _ in group:
+            print(f"        # {line}", file=f)
 
     print(file=f)
 

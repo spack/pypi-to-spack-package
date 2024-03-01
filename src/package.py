@@ -29,6 +29,9 @@ from spack.version.version_types import VersionStrComponent, prev_version_str_co
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.from_string(":3.6")
 
+# The prefix to use for Pythohn package names in Spack.
+SPACK_PREFIX = "py-"
+
 
 def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
     """Translate Specifier <x into a Spack range upperbound :y"""
@@ -569,7 +572,7 @@ def print_package(
             elif child not in defined_variants or not extras.issubset(defined_variants[child]):
                 comment = "variants statically unused"
 
-        pkg_name = "python" if child == "python" else f"py-{child}"
+        pkg_name = "python" if child == "python" else f"{SPACK_PREFIX}{child}"
         extras_variants = "".join(f"+{v}" for v in sorted(extras))
         dep_spec = Spec(f"{pkg_name} {extras_variants}")
         dep_spec.versions = version_list
@@ -658,12 +661,12 @@ def generate(pkg_name: str, extras: List[str]) -> None:
     packages_dir.mkdir(parents=True, exist_ok=True)
 
     for name, (node, _) in packages.items():
-        spack_name = f"py-{name}"
+        spack_name = f"{SPACK_PREFIX}{name}"
         package_dir = packages_dir / spack_name
         package_dir.mkdir(parents=True, exist_ok=True)
         with open(package_dir / "package.py", "w") as f:
             print("from spack.package import *\n", file=f)
-            print(f"class {mod_to_class(spack_name)}:", file=f)
+            print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
             print_package(node, defined_variants, f)
 
 

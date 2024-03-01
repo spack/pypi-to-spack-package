@@ -532,7 +532,7 @@ def print_package(
 
     # TODO: if defined_variants is not provided, infer from node.dep_to_when.keys().
     if defined_variants:
-        for variant in defined_variants.get(node.name, ()):
+        for variant in sorted(defined_variants.get(node.name, ())):
             print(f'    variant("{variant}", default=False)', file=f)
         print(file=f)
 

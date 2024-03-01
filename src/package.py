@@ -665,7 +665,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
         package_dir = packages_dir / spack_name
         package_dir.mkdir(parents=True, exist_ok=True)
         with open(package_dir / "package.py", "w") as f:
-            print("from spack.package import *\n", file=f)
+            print("from spack.package import *\n\n", file=f)
             print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
             print_package(node, defined_variants, f)
 

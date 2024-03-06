@@ -43,6 +43,7 @@ Convert Python PyPI entries to Spack `package.py`
      x.packagetype = "sdist"
      OR x.packagetype = "bdist_wheel" AND x.python_version = "py3"
    ) AND y.name IS NULL
+   -- AND x.upload_time >= "2024-03-01" -- Optional: only new uploads if existing database outdated
 
    -- Only pick the last (re)upload of (name, version, packagetype) tuples
    QUALIFY ROW_NUMBER() OVER (

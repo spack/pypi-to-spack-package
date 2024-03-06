@@ -14,13 +14,13 @@ import re
 import sqlite3
 import sys
 from collections import defaultdict
-from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import packaging.version as pv
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import Requirement
-from packaging.specifiers import InvalidSpecifier, Specifier, SpecifierSet
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
@@ -28,7 +28,9 @@ from spack.util.naming import mod_to_class
 from spack.version.version_types import VersionStrComponent, prev_version_str_component
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
-UNSUPPORTED_PYTHON = vn.from_string(":3.6")
+UNSUPPORTED_PYTHON = vn.VersionRange(
+    vn.StandardVersion.typemin(), vn.StandardVersion.from_string("3.6")
+)
 
 # The prefix to use for Pythohn package names in Spack.
 SPACK_PREFIX = "pypi-"
@@ -39,10 +41,7 @@ class VersionsLookup:
         self.cursor = cursor
         self.cache: Dict[str, List[pv.Version]] = {}
 
-    def __getitem__(self, name: str) -> List[pv.Version]:
-        result = self.cache.get(name)
-        if result is not None:
-            return result
+    def _query(self, name: str) -> List[pv.Version]:
         query = self.cursor.execute(
             """
             SELECT version
@@ -50,7 +49,28 @@ class VersionsLookup:
             WHERE name = ?""",
             (name,),
         )
-        result = sorted(vv for v, in query if (vv := acceptable_version(v)))
+        return sorted(vv for v, in query if (vv := acceptable_version(v)))
+
+    def _python_versions(self) -> List[pv.Version]:
+        all_versions = [
+            pv.Version(f"{major}.{minor}.{p}")
+            for major, minor, patch in (
+                (3, 7, 17),
+                (3, 8, 18),
+                (3, 9, 18),
+                (3, 10, 13),
+                (3, 11, 7),
+                (3, 12, 1),
+            )
+            for p in range(patch + 1)
+        ]
+        return list(reversed(all_versions))
+
+    def __getitem__(self, name: str) -> List[pv.Version]:
+        result = self.cache.get(name)
+        if result is not None:
+            return result
+        result = self._query(name) if name != "python" else self._python_versions()
         self.cache[name] = result
         return result
 
@@ -75,38 +95,6 @@ def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
     string_components.append(str(prev))
 
     return vn.StandardVersion("".join(string_components), v.version[:-1] + (prev,), v.separators)
-
-
-def specifier_to_spack_version(s: Specifier):
-    # The "version" 1.2.* is only allowed with operators != and ==, in which case it can follow the
-    # same code path. However, the PyPI index is filled with >=1.2.* nonsense -- ignore it, it
-    # would error in the else branch anyways as * is not a valid version component in Spack.
-    if s.version.endswith(".*") and s.operator in ("!=", "=="):
-        v = vn.StandardVersion.from_string(s.version[:-2])
-    else:
-        v = vn.StandardVersion.from_string(s.version)
-
-    if s.operator == ">=":
-        return vn.VersionRange(v, vn.StandardVersion.typemax())
-    elif s.operator == ">":
-        return vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())
-    elif s.operator == "<=":
-        return vn.VersionRange(vn.StandardVersion.typemin(), v)
-    elif s.operator == "<":
-        return vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))
-    elif s.operator == "~=":
-        return vn.VersionRange(v, v.up_to(len(v) - 1))
-    elif s.operator == "==":
-        return vn.VersionRange(v, v)
-    elif s.operator == "!=":
-        return vn.VersionList(
-            [
-                vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
-                vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
-            ]
-        )
-
-    return v
 
 
 def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[vn.VersionList]:
@@ -334,15 +322,6 @@ def evaluate_marker(m: Marker) -> Union[bool, None, List[Spec]]:
     return _evaluate_marker(m._markers)
 
 
-def version_list_from_specifier(ss: SpecifierSet) -> vn.VersionList:
-    # Note: this is only correct for python versions where we can assume some semver like
-    # semantics. Can't use this in requirements in general.
-    versions = vn.any_version
-    for s in ss:
-        versions = versions.intersection(vn.VersionList([specifier_to_spack_version(s)]))
-    return versions
-
-
 def dep_sorting_key(dep):
     """Sensible ordering key when emitting depends_on statements."""
     name, _, when_spec, _, _ = dep
@@ -385,7 +364,7 @@ def best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.St
     return curr if i == m else curr.up_to(i + 1)
 
 
-DepToWhen = Tuple[str, SpecifierSet, Optional[Spec], Optional[Marker], FrozenSet[str]]
+DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
 
 class Node:
@@ -424,7 +403,7 @@ def delete_old_patch_releases(
     prev = defined_versions[0]
     for i in range(1, len(defined_versions)):
         curr = defined_versions[i]
-        if len(curr.release) == 3 and curr.release[0:2] == prev.release[0:2]:
+        if len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
             del possible_versions[prev]
         prev = curr
 
@@ -467,7 +446,7 @@ def condensed_version_list(
     return vn.VersionList(new_versions)
 
 
-def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
+def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, List[pv.Version]] = defaultdict(list)
     version_to_shasum: Dict[pv.Version, str] = {}
 
@@ -498,24 +477,34 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
             try:
                 specifier_set = SpecifierSet(requires_python)
             except InvalidSpecifier:
-                print(f"{name}: invalid python specifier {requires_python}", file=sys.stderr)
+                print(
+                    f"{name}@{version}: invalid python specifier {requires_python}",
+                    file=sys.stderr,
+                )
                 continue
 
-            to_insert.append((("python", specifier_set, None, None, frozenset()), version))
+            versions = pkg_specifier_set_to_version_list("python", specifier_set, version_lookup)
 
-            # python_ver = version_list_from_specifier(specifier_set)
+            # First delete everything implied by UNSUPPORTED_PYTHON
+            vs = versions.versions
+            while vs and vs[0].satisfies(UNSUPPORTED_PYTHON):
+                del vs[0]
 
-            # # First drop any unsupported versions.
-            # python_ver.versions = [v for v in python_ver if not v.satisfies(UNSUPPORTED_PYTHON)]
+            if not vs:
+                print(
+                    f"{name}@{version}: no supported python versions: {requires_python}",
+                    file=sys.stderr,
+                )
+                continue
 
-            # # If there is at least one condition and the union is not the entire version space,
-            # # then there is a non-trivial constraint on python we need to emit.
-            # if python_ver.versions:
-            #     # Finally,
-            #     union_with_unsupported = vn.VersionList()
-            #     union_with_unsupported.versions[:] = python_ver.versions
-            #     union_with_unsupported.add(UNSUPPORTED_PYTHON)
-            #     if union_with_unsupported != vn.any_version:
+            # Remove any redundant lowerbound, e.g. @3.7:3.9 becomes @:3.9 if @:3.6 unsupported.
+            union = UNSUPPORTED_PYTHON._union_if_not_disjoint(vs[0])
+            if union:
+                vs[0] = union
+
+            # Only emit non-trivial constraints on python.
+            if versions != vn.any_version:
+                to_insert.append((("python", versions, None, None, frozenset()), version))
 
         for requirement_str in json.loads(requires_dist):
             r = Requirement(requirement_str)
@@ -534,7 +523,9 @@ def populate(name: str, sqlite_cursor: sqlite3.Cursor) -> Node:
 
             # Emit an unconditional depends_on, or one or more conditional depends_on statements.
             for when in result or [None]:
-                data = (normalized_name(r.name), r.specifier, when, r.marker, frozenset(r.extras))
+                child = normalized_name(r.name)
+                versions = pkg_specifier_set_to_version_list(child, r.specifier, version_lookup)
+                data = (child, versions, when, r.marker, frozenset(r.extras))
                 to_insert.append((data, version))
 
         # Delay registering a version until we know that it's valid.
@@ -669,10 +660,7 @@ def pkg_specifier_set_to_version_list(
 
 
 def print_package(
-    node: Node,
-    defined_variants: Dict[str, Set[str]],
-    version_lookup: VersionsLookup,
-    f: io.StringIO = sys.stdout,
+    node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
 ) -> None:
     if not node.version_to_shasum:
         print("    # No sdist available", file=f)
@@ -692,7 +680,7 @@ def print_package(
     uncommented_lines: List[str] = []
     commented_lines: List[Tuple[str, str]] = []
     for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
-        child, specifierset, when_spec, marker, extras = k
+        child, version_list, when_spec, marker, extras = k
         when = node.dep_to_when[k]
 
         if marker is not None:
@@ -723,11 +711,8 @@ def print_package(
         pkg_name = "python" if child == "python" else f"{SPACK_PREFIX}{child}"
         extras_variants = "".join(f"+{v}" for v in sorted(extras))
         dep_spec = Spec(f"{pkg_name} {extras_variants}")
+        dep_spec.versions = version_list
 
-        if child != "python":
-            dep_spec.versions = pkg_specifier_set_to_version_list(
-                child, specifierset, version_lookup
-            )
         line = f'depends_on("{dep_spec}"{when_str})'
         if comment:
             commented_lines.append((line, comment))
@@ -756,6 +741,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
     # +doc etc (or whatever the package author decided to call them) that are not required
     # by any of its dependents.
     packages: Dict[str, Tuple[Node, Set[str]]] = {}
+    version_lookup = VersionsLookup(sqlite_cursor)
 
     # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
     # those that its dependent required (or required from the command line for the root).
@@ -776,7 +762,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
             node, seen_variants = entry
             seen_variants.update(with_variants)
         else:
-            node = populate(name, sqlite_cursor)
+            node = populate(name, version_lookup, sqlite_cursor)
             seen_variants = set(with_variants)
             packages[name] = (node, seen_variants)
 
@@ -815,8 +801,6 @@ def generate(pkg_name: str, extras: List[str]) -> None:
     with open(packages_dir / ".." / "repo.yaml", "w") as f:
         f.write("repo:\n  namespace: python\n")
 
-    version_lookup = VersionsLookup(sqlite_cursor)
-
     for name, (node, _) in packages.items():
         spack_name = f"{SPACK_PREFIX}{name}"
         package_dir = packages_dir / spack_name
@@ -825,7 +809,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
             print("from spack.package import *\n\n", file=f)
             print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
             print('    url = "https://www.example.com/file.tar.gz"\n', file=f)
-            print_package(node, defined_variants, version_lookup, f)
+            print_package(node, defined_variants, f)
 
 
 if __name__ == "__main__":

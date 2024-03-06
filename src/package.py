@@ -322,12 +322,6 @@ def evaluate_marker(m: Marker) -> Union[bool, None, List[Spec]]:
     return _evaluate_marker(m._markers)
 
 
-def dep_sorting_key(dep):
-    """Sensible ordering key when emitting depends_on statements."""
-    name, _, when_spec, _, _ = dep
-    return (name != "python", name, when_spec)
-
-
 NAME_REGEX = re.compile(r"[-_.]+")
 
 
@@ -659,6 +653,20 @@ def pkg_specifier_set_to_version_list(
     return out
 
 
+def make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:
+    pkg_name = "python" if name == "python" else f"{SPACK_PREFIX}{name}"
+    extras_variants = "".join(f"+{v}" for v in sorted(extras))
+    spec = Spec(f"{pkg_name} {extras_variants}")
+    spec.versions = version_list
+    return spec
+
+
+def make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec:
+    spec = Spec() if spec is None else spec
+    spec.versions.intersect(when_versions)
+    return spec
+
+
 def print_package(
     node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
 ) -> None:
@@ -679,41 +687,47 @@ def print_package(
     # Then the depends_on bits.
     uncommented_lines: List[str] = []
     commented_lines: List[Tuple[str, str]] = []
-    for k in sorted(node.dep_to_when.keys(), key=dep_sorting_key):
-        child, version_list, when_spec, marker, extras = k
-        when = node.dep_to_when[k]
+
+    children = (
+        (
+            make_depends_on_spec(name, version_list, extras),
+            make_when_spec(when_spec, when_versions),
+            name,
+            marker,
+            extras,
+        )
+        for (
+            name,
+            version_list,
+            when_spec,
+            marker,
+            extras,
+        ), when_versions in node.dep_to_when.items()
+    )
+
+    for child_spec, when_spec, name, marker, extras in sorted(
+        children, key=lambda x: (x[0], x[1])
+    ):
 
         if marker is not None:
             comment = f"marker: {marker}"
         else:
             comment = False
 
-        when_spec = Spec() if when_spec is None else when_spec
-        when_spec.versions.intersect(when)
-
-        if when_spec == Spec("@:"):
-            when_str = ""
-        else:
-            when_str = f', when="{when_spec}"'
-
         # Comment out a depends_on statement if the variants do not exist, or if there are
         # markers that we could not evaluate.
-        if comment is False and defined_variants and child != "python":
+        if comment is False and defined_variants and name != "python":
             if (
                 when_spec
                 and when_spec.variants
                 and not all(v in defined_variants[node.name] for v in when_spec.variants)
             ):
                 comment = "variants statically unused"
-            elif child not in defined_variants or not extras.issubset(defined_variants[child]):
+            elif name not in defined_variants or not extras.issubset(defined_variants[name]):
                 comment = "variants statically unused"
 
-        pkg_name = "python" if child == "python" else f"{SPACK_PREFIX}{child}"
-        extras_variants = "".join(f"+{v}" for v in sorted(extras))
-        dep_spec = Spec(f"{pkg_name} {extras_variants}")
-        dep_spec.versions = version_list
-
-        line = f'depends_on("{dep_spec}"{when_str})'
+        when_str = "" if when_spec == Spec("@:") else f', when="{when_spec}"'
+        line = f'depends_on("{child_spec}"{when_str})'
         if comment:
             commented_lines.append((line, comment))
         else:

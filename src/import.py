@@ -38,6 +38,11 @@ def insert(entries):
         """
     INSERT INTO versions (name, version, requires_dist, requires_python, sha256, is_sdist)
     VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name, version) DO UPDATE SET
+    requires_dist = excluded.requires_dist,
+    requires_python = excluded.requires_python,
+    sha256 = excluded.sha256,
+    is_sdist = excluded.is_sdist
     """,
         entries,
     )

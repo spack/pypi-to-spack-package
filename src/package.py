@@ -5,14 +5,17 @@
 
 import argparse
 import bisect
+import gzip
 import io
 import itertools
 import json
 import os
 import pathlib
 import re
+import shutil
 import sqlite3
 import sys
+import urllib.request
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
@@ -36,6 +39,10 @@ UNSUPPORTED_PYTHON = vn.VersionRange(
 SPACK_PREFIX = "py-"
 
 NAME_REGEX = re.compile(r"[-_.]+")
+
+DB_URL = (
+    "https://www.github.com/haampie/pypi-to-spack-package/releases/downloads/latest/data.db.gz"
+)
 
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
@@ -847,6 +854,13 @@ def _generate(pkg_name: str, extras: List[str]) -> None:
             _print_package(node, defined_variants, f)
 
 
+def download_db():
+    print("Downloading latest database...", file=sys.stderr)
+    with urllib.request.urlopen(DB_URL) as response, open("data.db", "wb") as f:
+        with gzip.GzipFile(fileobj=response) as gz:
+            shutil.copyfileobj(gz, f)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
@@ -860,12 +874,18 @@ if __name__ == "__main__":
     )
     p_info = subparsers.add_parser("info", help="Show basic info about database or package")
     p_info.add_argument("package", nargs="?", help="package name on PyPI")
+    p_update = subparsers.add_parser("update", help="Download the latest database")
 
     args = parser.parse_args()
 
-    if not os.path.exists(args.db):
-        print(f"Database file {args.db} does not exist", file=sys.stderr)
-        sys.exit(1)
+    if args.command == "update":
+        download_db()
+        sys.exit(0)
+
+    elif not os.path.exists(args.db):
+        if input("Database does not exist, download? (y/n) ") not in ("y", "Y", "yes"):
+            sys.exit(1)
+        download_db()
 
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()

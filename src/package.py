@@ -19,7 +19,7 @@ from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 import packaging.version as pv
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
-from packaging.requirements import Requirement
+from packaging.requirements import Requirement, InvalidRequirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
@@ -499,7 +499,11 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
                 to_insert.append((("python", versions, None, None, frozenset()), version))
 
         for requirement_str in json.loads(requires_dist):
-            r = Requirement(requirement_str)
+            try:
+                r = Requirement(requirement_str)
+            except InvalidRequirement:
+                print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
+                continue
 
             if r.marker is not None:
                 result = _evaluate_marker(r.marker)

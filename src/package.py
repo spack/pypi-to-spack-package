@@ -19,7 +19,7 @@ from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 import packaging.version as pv
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
-from packaging.requirements import Requirement, InvalidRequirement
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
@@ -520,7 +520,13 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
             # Emit an unconditional depends_on, or one or more conditional depends_on statements.
             for when in result or [None]:
                 child = _normalized_name(r.name)
-                versions = _pkg_specifier_set_to_version_list(child, r.specifier, version_lookup)
+                try:
+                    versions = _pkg_specifier_set_to_version_list(
+                        child, r.specifier, version_lookup
+                    )
+                except ValueError:
+                    print(f"{name}@{version}: invalid specifier {r.specifier}", file=sys.stderr)
+                    continue
                 data = (child, versions, when, r.marker, frozenset(r.extras))
                 to_insert.append((data, version))
 

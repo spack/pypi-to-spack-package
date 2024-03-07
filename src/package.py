@@ -35,6 +35,26 @@ UNSUPPORTED_PYTHON = vn.VersionRange(
 # The prefix to use for Pythohn package names in Spack.
 SPACK_PREFIX = "pypi-"
 
+NAME_REGEX = re.compile(r"[-_.]+")
+
+DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
+
+
+class Node:
+    __slots__ = ("name", "dep_to_when", "version_to_shasum", "ordered_versions")
+
+    def __init__(
+        self,
+        name: str,
+        dep_to_when: Dict[DepToWhen, vn.VersionList],
+        version_to_shasum: Dict[pv.Version, str],
+        ordered_versions: List[pv.Version],
+    ):
+        self.name = name
+        self.dep_to_when = dep_to_when
+        self.version_to_shasum = version_to_shasum
+        self.ordered_versions = ordered_versions
+
 
 class VersionsLookup:
     def __init__(self, cursor: sqlite3.Cursor):
@@ -49,7 +69,7 @@ class VersionsLookup:
             WHERE name = ?""",
             (name,),
         )
-        return sorted(vv for v, in query if (vv := acceptable_version(v)))
+        return sorted(vv for v, in query if (vv := _acceptable_version(v)))
 
     def _python_versions(self) -> List[pv.Version]:
         all_versions = [
@@ -230,10 +250,10 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
 def _eval_node(node) -> Union[None, bool, List[Spec]]:
     if isinstance(node, tuple):
         return _eval_constraint(node)
-    return _evaluate_marker(node)
+    return _do_evaluate_marker(node)
 
 
-def intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
+def _intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     """Expand: (a or b) and (c or d) = (a and c) or (a and d) or (b and c) or (b and d)
     where `and` is spec intersection."""
     specs: List[Spec] = []
@@ -249,7 +269,7 @@ def intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     return list(set(specs))
 
 
-def union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
+def _union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     """This case is trivial: (a or b) or (c or d) = a or b or c or d, BUT do a simplification
     in case the rhs only expresses constraints on versions."""
     if len(rhs) == 1 and not rhs[0].variants:
@@ -261,7 +281,7 @@ def union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     return list(set(lhs + rhs))
 
 
-def _evaluate_marker(node: list) -> Union[None, bool, List[Spec]]:
+def _do_evaluate_marker(node: list) -> Union[None, bool, List[Spec]]:
     """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
     # Format is like this.
     # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
@@ -296,7 +316,7 @@ def _evaluate_marker(node: list) -> Union[None, bool, List[Spec]]:
             elif lhs is True:
                 lhs = rhs
             elif rhs is not True:  # Intersection of specs
-                lhs = intersection(lhs, rhs)
+                lhs = _intersection(lhs, rhs)
                 # The intersection can be empty, which means it's statically false.
                 if not lhs:
                     return False
@@ -311,25 +331,22 @@ def _evaluate_marker(node: list) -> Union[None, bool, List[Spec]]:
             elif lhs is False:
                 lhs = rhs
             elif rhs is not False:
-                lhs = union(lhs, rhs)
+                lhs = _union(lhs, rhs)
     return lhs
 
 
-def evaluate_marker(m: Marker) -> Union[bool, None, List[Spec]]:
+def _evaluate_marker(m: Marker) -> Union[bool, None, List[Spec]]:
     """Evaluate the marker expression tree either (1) as a list of specs that constitute the when
     conditions, (2) statically as True or False given that we only support cpython, (3) None if
     we can't translate it into Spack DSL."""
-    return _evaluate_marker(m._markers)
+    return _do_evaluate_marker(m._markers)
 
 
-NAME_REGEX = re.compile(r"[-_.]+")
-
-
-def normalized_name(name):
+def _normalized_name(name):
     return re.sub(NAME_REGEX, "-", name).lower()
 
 
-def best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.StandardVersion:
+def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.StandardVersion:
     """Return the most general upperound that includes curr but not next.
     Invariant is that curr < next."""
 
@@ -347,7 +364,7 @@ def best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.St
     return curr if i == m else curr.up_to(i + 1)
 
 
-def best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
+def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
     i = 1
     m = min(len(prev), len(curr))
     while i < m and prev.version[i] == curr.version[i]:
@@ -358,26 +375,7 @@ def best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.St
     return curr if i == m else curr.up_to(i + 1)
 
 
-DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
-
-
-class Node:
-    __slots__ = ("name", "dep_to_when", "version_to_shasum", "ordered_versions")
-
-    def __init__(
-        self,
-        name: str,
-        dep_to_when: Dict[DepToWhen, vn.VersionList],
-        version_to_shasum: Dict[pv.Version, str],
-        ordered_versions: List[pv.Version],
-    ):
-        self.name = name
-        self.dep_to_when = dep_to_when
-        self.version_to_shasum = version_to_shasum
-        self.ordered_versions = ordered_versions
-
-
-def acceptable_version(version: str) -> Optional[pv.Version]:
+def _acceptable_version(version: str) -> Optional[pv.Version]:
     """Maybe parse with packaging"""
     try:
         v = pv.parse(version)
@@ -388,7 +386,7 @@ def acceptable_version(version: str) -> Optional[pv.Version]:
     return v
 
 
-def delete_old_patch_releases(
+def _delete_old_patch_releases(
     defined_versions: List[pv.Version], possible_versions: Dict[pv.Version, Tuple[str, str, bytes]]
 ) -> None:
     """Reduce the number of version definitions by just considering the latest patch release."""
@@ -402,7 +400,7 @@ def delete_old_patch_releases(
         prev = curr
 
 
-def condensed_version_list(
+def _condensed_version_list(
     _version_list: List[pv.Version], _ordered_versions: List[pv.Version]
 ) -> vn.VersionList:
     version_list = [vn.StandardVersion.from_string(str(v)) for v in _version_list]
@@ -418,14 +416,14 @@ def condensed_version_list(
     if i == 1:
         lo = vn.StandardVersion.typemin()
     else:
-        lo = best_lowerbound(ordered_versions[i - 2], version_list[0])
+        lo = _best_lowerbound(ordered_versions[i - 2], version_list[0])
 
     while j < len(version_list):
         if ordered_versions[i] != version_list[j]:
-            hi = best_upperbound(version_list[j - 1], ordered_versions[i])
+            hi = _best_upperbound(version_list[j - 1], ordered_versions[i])
             new_versions.append(vn.VersionRange(lo, hi))
             i = ordered_versions.index(version_list[j])
-            lo = best_lowerbound(ordered_versions[i - 1], version_list[j])
+            lo = _best_lowerbound(ordered_versions[i - 1], version_list[j])
         i += 1
         j += 1
 
@@ -434,13 +432,13 @@ def condensed_version_list(
     if i == len(ordered_versions):
         hi = vn.StandardVersion.typemax()
     else:
-        hi = best_upperbound(version_list[j - 1], ordered_versions[i])
+        hi = _best_upperbound(version_list[j - 1], ordered_versions[i])
 
     new_versions.append(vn.VersionRange(lo, hi))
     return vn.VersionList(new_versions)
 
 
-def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
+def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, List[pv.Version]] = defaultdict(list)
     version_to_shasum: Dict[pv.Version, str] = {}
 
@@ -455,12 +453,12 @@ def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.C
     version_to_data = {
         v: (requires_dist, requires_python, sha256)
         for version, requires_dist, requires_python, sha256 in query
-        if (v := acceptable_version(version))
+        if (v := _acceptable_version(version))
     }
 
     all_versions = sorted(version_to_data.keys())
 
-    delete_old_patch_releases(all_versions, version_to_data)
+    _delete_old_patch_releases(all_versions, version_to_data)
 
     for version, (requires_dist, requires_python, sha256_blob) in version_to_data.items():
         # Database cannot have duplicate versions.
@@ -477,7 +475,7 @@ def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.C
                 )
                 continue
 
-            versions = pkg_specifier_set_to_version_list("python", specifier_set, version_lookup)
+            versions = _pkg_specifier_set_to_version_list("python", specifier_set, version_lookup)
 
             # First delete everything implied by UNSUPPORTED_PYTHON
             vs = versions.versions
@@ -504,7 +502,7 @@ def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.C
             r = Requirement(requirement_str)
 
             if r.marker is not None:
-                result = evaluate_marker(r.marker)
+                result = _evaluate_marker(r.marker)
                 if result is False:  # skip: statically unsatisfiable
                     continue
                 elif result is True:  # unconditional depends_on
@@ -517,8 +515,8 @@ def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.C
 
             # Emit an unconditional depends_on, or one or more conditional depends_on statements.
             for when in result or [None]:
-                child = normalized_name(r.name)
-                versions = pkg_specifier_set_to_version_list(child, r.specifier, version_lookup)
+                child = _normalized_name(r.name)
+                versions = _pkg_specifier_set_to_version_list(child, r.specifier, version_lookup)
                 data = (child, versions, when, r.marker, frozenset(r.extras))
                 to_insert.append((data, version))
 
@@ -534,14 +532,14 @@ def populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.C
     return Node(
         name,
         dep_to_when={
-            k: condensed_version_list(dep_to_when[k], ordered_versions) for k in dep_to_when
+            k: _condensed_version_list(dep_to_when[k], ordered_versions) for k in dep_to_when
         },
         version_to_shasum=version_to_shasum,
         ordered_versions=ordered_versions,
     )
 
 
-def parse_without_trailing_zeros(version: str) -> vn.StandardVersion:
+def _parse_without_trailing_zeros(version: str) -> vn.StandardVersion:
     """Parse as Spack version without trailing zeros, so "1.2.0" becomes "1.2"."""
     v = vn.StandardVersion.from_string(version)
     i = len(v)
@@ -550,7 +548,7 @@ def parse_without_trailing_zeros(version: str) -> vn.StandardVersion:
     return v if i == len(v) else v.up_to(i)
 
 
-def pkg_specifier_set_to_version_list(
+def _pkg_specifier_set_to_version_list(
     pkg: str, specifier_set: SpecifierSet, version_lookup: VersionsLookup
 ) -> vn.VersionList:
     # Turns out translating a specifier set to a version list is non-trivial and cannot be done
@@ -576,10 +574,10 @@ def pkg_specifier_set_to_version_list(
     for specifier in specifier_set:
         # First the trivial specifiers
         if specifier.operator == ">=":
-            v = parse_without_trailing_zeros(specifier.version)
+            v = _parse_without_trailing_zeros(specifier.version)
             new = [vn.VersionRange(v, vn.StandardVersion.typemax())]
         elif specifier.operator == "<":
-            v = parse_without_trailing_zeros(specifier.version)
+            v = _parse_without_trailing_zeros(specifier.version)
             new = [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
         elif specifier.operator == "~=":
             v = vn.StandardVersion.from_string(specifier.version)
@@ -606,7 +604,7 @@ def pkg_specifier_set_to_version_list(
                     if idx < len(known_versions):
                         prev = vn.StandardVersion.from_string(str(known_versions[idx - 1]))
                         curr = vn.StandardVersion.from_string(str(known_versions[idx]))
-                        lo = best_lowerbound(prev, curr)
+                        lo = _best_lowerbound(prev, curr)
                         new = [vn.VersionRange(lo, vn.StandardVersion.typemax())]
                     else:
                         v = vn.StandardVersion.from_string(specifier.version)
@@ -615,7 +613,7 @@ def pkg_specifier_set_to_version_list(
                     if 0 < idx < len(known_versions):
                         prev = vn.StandardVersion.from_string(str(known_versions[idx - 1]))
                         curr = vn.StandardVersion.from_string(str(known_versions[idx]))
-                        hi = best_upperbound(prev, curr)
+                        hi = _best_upperbound(prev, curr)
                         new = [vn.VersionRange(vn.StandardVersion.typemin(), hi)]
                     else:
                         v = vn.StandardVersion.from_string(specifier.version)
@@ -653,7 +651,7 @@ def pkg_specifier_set_to_version_list(
     return out
 
 
-def make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:
+def _make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:
     pkg_name = "python" if name == "python" else f"{SPACK_PREFIX}{name}"
     extras_variants = "".join(f"+{v}" for v in sorted(extras))
     spec = Spec(f"{pkg_name} {extras_variants}")
@@ -661,13 +659,13 @@ def make_depends_on_spec(name: str, version_list: vn.VersionList, extras: Frozen
     return spec
 
 
-def make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec:
+def _make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec:
     spec = Spec() if spec is None else spec
     spec.versions.intersect(when_versions)
     return spec
 
 
-def print_package(
+def _print_package(
     node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
 ) -> None:
     if not node.version_to_shasum:
@@ -690,8 +688,8 @@ def print_package(
 
     children = (
         (
-            make_depends_on_spec(name, version_list, extras),
-            make_when_spec(when_spec, when_versions),
+            _make_depends_on_spec(name, version_list, extras),
+            _make_when_spec(when_spec, when_versions),
             name,
             marker,
             extras,
@@ -748,7 +746,7 @@ def print_package(
     print(file=f)
 
 
-def generate(pkg_name: str, extras: List[str]) -> None:
+def _generate(pkg_name: str, extras: List[str]) -> None:
     # Maps package name to (Node, seen_variants) tuples. The set of variants is those
     # variants that can possibly be turned on. It's intended to list a subset of the
     # variants defined by the package, as a means to omit variants like +test, +dev, and
@@ -776,7 +774,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
             node, seen_variants = entry
             seen_variants.update(with_variants)
         else:
-            node = populate(name, version_lookup, sqlite_cursor)
+            node = _populate(name, version_lookup, sqlite_cursor)
             seen_variants = set(with_variants)
             packages[name] = (node, seen_variants)
 
@@ -823,7 +821,7 @@ def generate(pkg_name: str, extras: List[str]) -> None:
             print("from spack.package import *\n\n", file=f)
             print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
             print('    url = "https://www.example.com/file.tar.gz"\n', file=f)
-            print_package(node, defined_variants, f)
+            _print_package(node, defined_variants, f)
 
 
 if __name__ == "__main__":
@@ -851,7 +849,7 @@ if __name__ == "__main__":
 
     if args.command == "info":
         if args.package:
-            node = populate(normalized_name(args.package), sqlite_cursor)
+            node = _populate(_normalized_name(args.package), sqlite_cursor)
             variants = set(
                 variant
                 for _, _, when_spec, _, _ in node.dep_to_when.keys()
@@ -872,4 +870,4 @@ if __name__ == "__main__":
             )
 
     elif args.command == "generate":
-        generate(normalized_name(args.package), args.extras)
+        _generate(_normalized_name(args.package), args.extras)

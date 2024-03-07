@@ -439,7 +439,7 @@ def _condensed_version_list(
 
 
 def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
-    dep_to_when: Dict[DepToWhen, List[pv.Version]] = defaultdict(list)
+    dep_to_when: Dict[DepToWhen, Set[pv.Version]] = defaultdict(set)
     version_to_shasum: Dict[pv.Version, str] = {}
 
     query = sqlite_cursor.execute(
@@ -532,7 +532,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
 
         # Delay registering a version until we know that it's valid.
         for k, v in to_insert:
-            dep_to_when[k].append(v)
+            dep_to_when[k].add(v)
         version_to_shasum[version] = "".join(f"{x:02x}" for x in sha256_blob)
 
     # Next, simplify a list of specific version to a range if they are consecutive.
@@ -542,7 +542,8 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
     return Node(
         name,
         dep_to_when={
-            k: _condensed_version_list(dep_to_when[k], ordered_versions) for k in dep_to_when
+            k: _condensed_version_list(sorted(dep_to_when[k]), ordered_versions)
+            for k in dep_to_when
         },
         version_to_shasum=version_to_shasum,
         ordered_versions=ordered_versions,

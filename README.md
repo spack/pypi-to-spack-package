@@ -2,74 +2,9 @@
 
 Note: this is work in progress.
 
-Convert Python PyPI entries to Spack `package.py`
+## Usage
 
-1. Go to https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=pypi&page=dataset
-2. Run the following query
-
-   ```sql
-   EXPORT DATA OPTIONS(
-     compression="GZIP",
-     uri="gs://<bucket>/pypi-export/pypi-*.json.gz",
-     format="JSON",
-     overwrite=true
-   )
-
-   AS
-
-   SELECT
-     -- https://packaging.python.org/en/latest/specifications/name-normalization/
-     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") AS normalized_name,
-     x.version,
-     x.requires_dist,
-     x.requires_python,
-     x.sha256_digest,
-     x.packagetype = "sdist" AS is_sdist
-
-   FROM `bigquery-public-data.pypi.distribution_metadata` AS x
-
-   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built
-   -- both binary and pure python, in that case prefer sdist)
-   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y ON (
-    REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
-    AND x.version = y.version
-    AND x.packagetype = "bdist_wheel"
-    AND y.packagetype = "bdist_wheel"
-    AND y.python_version != "py3"
-   )
-
-   -- Select sdist and universal wheels
-   WHERE (
-     x.packagetype = "sdist"
-     OR x.packagetype = "bdist_wheel" AND x.python_version = "py3"
-   ) AND y.name IS NULL
-   -- AND x.upload_time >= "2024-03-01" -- Optional: only new uploads if existing database outdated
-
-   -- Only pick the last (re)upload of (name, version, packagetype) tuples
-   QUALIFY ROW_NUMBER() OVER (
-     PARTITION BY normalized_name, x.version, x.packagetype
-     ORDER BY x.upload_time DESC
-   ) = 1
-
-   -- If there are both universal wheels and sdist, pick the wheel
-   AND ROW_NUMBER() OVER (
-     PARTITION BY normalized_name, x.version
-     ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END
-   ) = 1
-   ```
-   which should say something like "Successfully exported 5651880 rows into 101 files".
-3. Download the files using:
-   ```console
-   $ gsutil -m cp -r gs://<bucket>/pypi-export .
-   ```
-4. Run `python3 src/import.py pypi-export/` to import as sqlite.
-5. Install `packaging` if not installed already
-6. Run `spack-python src/package.py <pkg>` to convert to `package.py`.
-
-
-## Example
-
-First have a look at the database, and see what versions and variants are available for `black`.
+Let's fetch the PyPI database and have a look what's in there.
 
 ```console
 $ spack-python src/package.py info
@@ -161,8 +96,75 @@ class PyBlack(PythonPackage):
 
 ## TODO
 
-- [ ] `url`
-- [ ] Strategy for dropping old patch versions
+- [ ] Create a proper `url`
+- [ ] Update spack package.py files instead of creating new ones.
+
+## Updating the database
+
+> [!NOTE]  
+> This is only necessary if you want to populate a database from scratch, or update the database
+> to the very latest. By default, a (slightly outdated) copy of the database is fetched
+> automatically.
+
+1. Go to https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=pypi&page=dataset
+2. Run the following query
+
+   ```sql
+   EXPORT DATA OPTIONS(
+     compression="GZIP",
+     uri="gs://<bucket>/pypi-export/pypi-*.json.gz",
+     format="JSON",
+     overwrite=true
+   )
+
+   AS
+
+   SELECT
+     -- https://packaging.python.org/en/latest/specifications/name-normalization/
+     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") AS normalized_name,
+     x.version,
+     x.requires_dist,
+     x.requires_python,
+     x.sha256_digest,
+     x.packagetype = "sdist" AS is_sdist
+
+   FROM `bigquery-public-data.pypi.distribution_metadata` AS x
+
+   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built
+   -- both binary and pure python, in that case prefer sdist)
+   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y ON (
+    REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
+    AND x.version = y.version
+    AND x.packagetype = "bdist_wheel"
+    AND y.packagetype = "bdist_wheel"
+    AND y.python_version != "py3"
+   )
+
+   -- Select sdist and universal wheels
+   WHERE (
+     x.packagetype = "sdist"
+     OR x.packagetype = "bdist_wheel" AND x.python_version = "py3"
+   ) AND y.name IS NULL
+   -- AND x.upload_time >= "2024-03-01" -- If you already have a db, set this to last time fetched
+
+   -- Only pick the last (re)upload of (name, version, packagetype) tuples
+   QUALIFY ROW_NUMBER() OVER (
+     PARTITION BY normalized_name, x.version, x.packagetype
+     ORDER BY x.upload_time DESC
+   ) = 1
+
+   -- If there are both universal wheels and sdist, pick the wheel
+   AND ROW_NUMBER() OVER (
+     PARTITION BY normalized_name, x.version
+     ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END
+   ) = 1
+   ```
+   which should say something like "Successfully exported 5651880 rows into 101 files".
+3. Download the files using:
+   ```console
+   $ gsutil -m cp -r gs://<bucket>/pypi-export .
+   ```
+4. Run `python3 src/import.py pypi-export/` to import as sqlite.
 
 ## License
 

@@ -40,9 +40,7 @@ SPACK_PREFIX = "py-"
 
 NAME_REGEX = re.compile(r"[-_.]+")
 
-DB_URL = (
-    "https://www.github.com/haampie/pypi-to-spack-package/releases/downloads/latest/data.db.gz"
-)
+DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/latest/data.db.gz"
 
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
@@ -855,7 +853,7 @@ def _generate(pkg_name: str, extras: List[str]) -> None:
 
 
 def download_db():
-    print("Downloading latest database...", file=sys.stderr)
+    print("Downloading latest database (~500MB, may take a while...)", file=sys.stderr)
     with urllib.request.urlopen(DB_URL) as response, open("data.db", "wb") as f:
         with gzip.GzipFile(fileobj=response) as gz:
             shutil.copyfileobj(gz, f)

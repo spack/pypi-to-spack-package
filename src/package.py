@@ -29,7 +29,7 @@ from spack.version.version_types import VersionStrComponent, prev_version_str_co
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
-    vn.StandardVersion.typemin(), vn.StandardVersion.from_string("3.6")
+    vn.StandardVersion.typemin(), vn.StandardVersion.from_string("3.7")
 )
 
 # The prefix to use for Pythohn package names in Spack.

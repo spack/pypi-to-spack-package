@@ -99,7 +99,7 @@ class PyBlack(PythonPackage):
 - [ ] Create a proper `url`
 - [ ] Update spack package.py files instead of creating new ones.
 
-## Updating the database
+## Importing the PyPI database
 
 > [!NOTE]  
 > This is only necessary if you want to populate a database from scratch, or update the database

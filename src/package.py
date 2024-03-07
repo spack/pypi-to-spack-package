@@ -33,7 +33,7 @@ UNSUPPORTED_PYTHON = vn.VersionRange(
 )
 
 # The prefix to use for Pythohn package names in Spack.
-SPACK_PREFIX = "pypi-"
+SPACK_PREFIX = "py-"
 
 NAME_REGEX = re.compile(r"[-_.]+")
 

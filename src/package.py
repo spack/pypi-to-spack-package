@@ -41,18 +41,18 @@ DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenS
 
 
 class Node:
-    __slots__ = ("name", "dep_to_when", "version_to_shasum", "ordered_versions")
+    __slots__ = ("name", "dep_to_when", "version_info", "ordered_versions")
 
     def __init__(
         self,
         name: str,
         dep_to_when: Dict[DepToWhen, vn.VersionList],
-        version_to_shasum: Dict[pv.Version, str],
+        version_info: Dict[pv.Version, str],
         ordered_versions: List[pv.Version],
     ):
         self.name = name
         self.dep_to_when = dep_to_when
-        self.version_to_shasum = version_to_shasum
+        self.version_info = version_info
         self.ordered_versions = ordered_versions
 
 
@@ -440,19 +440,19 @@ def _condensed_version_list(
 
 def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, Set[pv.Version]] = defaultdict(set)
-    version_to_shasum: Dict[pv.Version, str] = {}
+    version_info: Dict[pv.Version, str] = {}
 
     query = sqlite_cursor.execute(
         """
-        SELECT version, requires_dist, requires_python, sha256 
+        SELECT version, requires_dist, requires_python, sha256, is_sdist
         FROM versions
         WHERE name = ?""",
         (name,),
     )
 
     version_to_data = {
-        v: (requires_dist, requires_python, sha256)
-        for version, requires_dist, requires_python, sha256 in query
+        v: (requires_dist, requires_python, sha256, sdist)
+        for version, requires_dist, requires_python, sha256, sdist in query
         if (v := _acceptable_version(version))
     }
 
@@ -460,9 +460,9 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
 
     _delete_old_patch_releases(all_versions, version_to_data)
 
-    for version, (requires_dist, requires_python, sha256_blob) in version_to_data.items():
+    for version, (requires_dist, requires_python, sha256_blob, sdist) in version_to_data.items():
         # Database cannot have duplicate versions.
-        assert version not in version_to_shasum
+        assert version not in version_info
 
         to_insert = []
         if requires_python:
@@ -534,10 +534,10 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         # Delay registering a version until we know that it's valid.
         for k, v in to_insert:
             dep_to_when[k].add(v)
-        version_to_shasum[version] = "".join(f"{x:02x}" for x in sha256_blob)
+        version_info[version] = ("".join(f"{x:02x}" for x in sha256_blob), sdist)
 
     # Next, simplify a list of specific version to a range if they are consecutive.
-    ordered_versions = sorted(version_to_shasum.keys())
+    ordered_versions = sorted(version_info.keys())
 
     # Translate the list of packaging versions to a list of Spack ranges.
     return Node(
@@ -546,7 +546,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
             k: _condensed_version_list(sorted(dep_to_when[k]), ordered_versions)
             for k in dep_to_when
         },
-        version_to_shasum=version_to_shasum,
+        version_info=version_info,
         ordered_versions=ordered_versions,
     )
 
@@ -680,14 +680,15 @@ def _make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec
 def _print_package(
     node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
 ) -> None:
-    if not node.version_to_shasum:
-        print("    # No sdist available", file=f)
+    if not node.version_info:
+        print("    # No versions available", file=f)
         print("    pass", file=f)
         print(file=f)
         return
 
     for v in reversed(node.ordered_versions):
-        print(f'    version("{v}", sha256="{node.version_to_shasum[v]}")', file=f)
+        sha256, sdist = node.version_info[v]
+        print(f'    version("{v}", sha256="{sha256}")  # {"sdist" if sdist else "wheel"}', file=f)
     print(file=f)
 
     for variant in sorted(defined_variants.get(node.name, ())):

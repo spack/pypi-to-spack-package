@@ -686,7 +686,7 @@ def _print_package(
     uncommented_lines: List[str] = []
     commented_lines: List[Tuple[str, str]] = []
 
-    children = (
+    children = [
         (
             _make_depends_on_spec(name, version_list, extras),
             _make_when_spec(when_spec, when_versions),
@@ -701,11 +701,14 @@ def _print_package(
             marker,
             extras,
         ), when_versions in node.dep_to_when.items()
-    )
+    ]
 
-    for child_spec, when_spec, name, marker, extras in sorted(
-        children, key=lambda x: (x[0], x[1])
-    ):
+    # Order by (python / not python, name ASC, when spec DESC, spec DESC)
+    children.sort(key=lambda x: (x[0]), reverse=True)
+    children.sort(key=lambda x: (x[1]), reverse=True)
+    children.sort(key=lambda x: (x[0].name != "python", x[0].name))
+
+    for child_spec, when_spec, name, marker, extras in children:
 
         if marker is not None:
             comment = f"marker: {marker}"
@@ -733,8 +736,11 @@ def _print_package(
 
     if uncommented_lines:
         print('    with default_args(type=("build", "run")):', file=f)
-        for line in uncommented_lines:
-            print(f"        {line}", file=f)
+    elif commented_lines:
+        print('    # with default_args(type=("build", "run")):', file=f)
+
+    for line in uncommented_lines:
+        print(f"        {line}", file=f)
 
     # Group commented lines by comment
     commented_lines.sort(key=lambda x: x[1])

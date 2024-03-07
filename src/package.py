@@ -505,6 +505,8 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
                 print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
                 continue
 
+            child = _normalized_name(r.name)
+
             if r.marker is not None:
                 result = _evaluate_marker(r.marker)
                 if result is False:  # skip: statically unsatisfiable
@@ -519,7 +521,6 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
 
             # Emit an unconditional depends_on, or one or more conditional depends_on statements.
             for when in result or [None]:
-                child = _normalized_name(r.name)
                 try:
                     versions = _pkg_specifier_set_to_version_list(
                         child, r.specifier, version_lookup
@@ -725,6 +726,10 @@ def _print_package(
             comment = f"marker: {marker}"
         else:
             comment = False
+
+        if name == node.name:
+            # TODO: could turn this into a requirement: requires("+x", when="@y")
+            comment = "self-dependency"
 
         # Comment out a depends_on statement if the variants do not exist, or if there are
         # markers that we could not evaluate.

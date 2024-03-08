@@ -17,7 +17,7 @@ import sqlite3
 import sys
 import urllib.request
 from collections import defaultdict
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import packaging.version as pv
 import spack.version as vn
@@ -391,18 +391,19 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
     return v
 
 
-def _delete_old_patch_releases(
-    defined_versions: List[pv.Version], possible_versions: Dict[pv.Version, Tuple[str, str, bytes]]
-) -> None:
-    """Reduce the number of version definitions by just considering the latest patch release."""
+def _delete_old_releases(possible_versions: Dict[pv.Version, Any], keep=15) -> None:
+    """Delete non-latest patch releases, and retain at most `keep` releases overall."""
     if not possible_versions:
         return
-    prev = defined_versions[0]
-    for i in range(1, len(defined_versions)):
-        curr = defined_versions[i]
-        if len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
+    versions_desc = sorted(possible_versions.keys(), reverse=True)
+    curr = versions_desc[0]
+    for i in range(1, len(versions_desc)):
+        prev = versions_desc[i]
+        if keep == 0 or len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
             del possible_versions[prev]
-        prev = curr
+        else:
+            keep -= 1
+            curr = prev
 
 
 def _condensed_version_list(
@@ -461,9 +462,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         if (v := _acceptable_version(version))
     }
 
-    all_versions = sorted(version_to_data.keys())
-
-    _delete_old_patch_releases(all_versions, version_to_data)
+    _delete_old_releases(version_to_data)
 
     for version, (requires_dist, requires_python, sha256_blob, sdist) in version_to_data.items():
         # Database cannot have duplicate versions.

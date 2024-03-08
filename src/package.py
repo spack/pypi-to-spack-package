@@ -399,7 +399,7 @@ def _delete_old_releases(possible_versions: Dict[pv.Version, Any], keep=15) -> N
     curr = versions_desc[0]
     for i in range(1, len(versions_desc)):
         prev = versions_desc[i]
-        if keep == 0 or len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
+        if keep <= 1 or len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
             del possible_versions[prev]
         else:
             keep -= 1

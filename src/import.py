@@ -37,12 +37,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS name_index ON versions (name, version)
 def insert(entries):
     c.executemany(
         """
-    INSERT INTO versions (name, version, requires_dist, requires_python, sha256, is_sdist)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO versions (name, version, requires_dist, requires_python, sha256, path, is_sdist)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, version) DO UPDATE SET
     requires_dist = excluded.requires_dist,
     requires_python = excluded.requires_python,
     sha256 = excluded.sha256,
+    path = excluded.path,
     is_sdist = excluded.is_sdist
     """,
         entries,
@@ -68,6 +69,7 @@ for file in sorted(os.listdir(path)):
                     json.dumps(data.get("requires_dist", []), separators=(",", ":")),
                     data.get("requires_python", ""),
                     bytearray.fromhex(data.get("sha256_digest", "")),
+                    data["path"],
                     data["is_sdist"],
                 )
             )
@@ -78,5 +80,3 @@ for file in sorted(os.listdir(path)):
                 print(i)
 insert(entries)
 
-c.execute("VACUUM")
-conn.commit()

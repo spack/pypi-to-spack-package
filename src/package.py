@@ -454,21 +454,21 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
 
     query = sqlite_cursor.execute(
         """
-        SELECT version, requires_dist, requires_python, sha256, is_sdist
+        SELECT version, requires_dist, requires_python, sha256, path, is_sdist
         FROM versions
         WHERE name = ?""",
         (name,),
     )
 
     version_to_data = {
-        v: (requires_dist, requires_python, sha256, sdist)
-        for version, requires_dist, requires_python, sha256, sdist in query
+        v: (requires_dist, requires_python, sha256, path, sdist)
+        for version, requires_dist, requires_python, sha256, path, sdist in query
         if (v := _acceptable_version(version))
     }
 
     _delete_old_releases(version_to_data)
 
-    for version, (requires_dist, requires_python, sha256_blob, sdist) in version_to_data.items():
+    for version, (requires_dist, requires_python, sha256_blob, path, sdist) in version_to_data.items():
         # Database cannot have duplicate versions.
         assert version not in version_info
 
@@ -542,7 +542,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         # Delay registering a version until we know that it's valid.
         for k, v in to_insert:
             dep_to_when[k].add(v)
-        version_info[version] = ("".join(f"{x:02x}" for x in sha256_blob), sdist)
+        version_info[version] = ("".join(f"{x:02x}" for x in sha256_blob), path, sdist)
 
     # Next, simplify a list of specific version to a range if they are consecutive.
     ordered_versions = sorted(version_info.keys())
@@ -695,8 +695,8 @@ def _print_package(
         return
 
     for v in reversed(node.ordered_versions):
-        sha256, sdist = node.version_info[v]
-        print(f'    version("{v}", sha256="{sha256}")  # {"sdist" if sdist else "wheel"}', file=f)
+        sha256, path, sdist = node.version_info[v]
+        print(f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")', file=f)
     print(file=f)
 
     for variant in sorted(defined_variants.get(node.name, ())):
@@ -851,7 +851,6 @@ def _generate(pkg_name: str, extras: List[str]) -> None:
         with open(package_dir / "package.py", "w") as f:
             print("from spack.package import *\n\n", file=f)
             print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
-            print('    url = "https://www.example.com/file.tar.gz"\n', file=f)
             _print_package(node, defined_variants, f)
 
 

@@ -102,9 +102,13 @@ class PyBlack(PythonPackage):
   - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
     because the `in` and `not in` operators use the right-hand side as literal string, instead of
     a version list. So, I have not implemented this.
-  - ❌ The variables `os_name`, `sys_platform`, `platform_machine`, `platform_release`,
-    `platform_system`, `platform_version`, `implementation_version` are still to-do in as far as
-    they can be translated to a `Spec`.
+  - ✅ Expressions `sys_platform == ...` and `platform_system == ...` are translated to
+    `platform=...` for Linux, Darwin, and Windows.
+  - ❌ The variables `os_name`, `platform_machine`, `platform_release`,
+    `platform_system`, `platform_version`, `implementation_version` are still to-do, if possible.
+     Expressions of the form `sys_platform != ...` and `platform_system != ...` are not
+     yet implemented either, mostly pending on negation operators in Spack itself and/or
+     multivalued `platform` constraint.
 
 ## TODO
 

@@ -227,6 +227,22 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
             return value.value.lower() != "cpython"
         return None
 
+    if variable.value == "platform_system" and op.value == "==":
+        platform = value.value.lower()
+        if platform in ("linux", "darwin", "windows"):
+            return [Spec(f"platform={platform}")]
+        return None
+
+    if variable.value == "sys_platform" and op.value == "==":
+        platform = value.value.lower()
+        if platform == "win32":
+            platform = "windows"
+        elif platform == "linux2":
+            platform = "linux"
+        if platform in ("linux", "darwin", "windows"):
+            return [Spec(f"platform={platform}")]
+        return None
+
     try:
         if variable.value == "extra":
             if op.value == "==":
@@ -279,7 +295,7 @@ def _intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
 def _union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     """This case is trivial: (a or b) or (c or d) = a or b or c or d, BUT do a simplification
     in case the rhs only expresses constraints on versions."""
-    if len(rhs) == 1 and not rhs[0].variants:
+    if len(rhs) == 1 and not rhs[0].variants and not rhs[0].platform:
         python, *_ = rhs[0].dependencies("python")
         for l in lhs:
             l.versions.add(python.versions)
@@ -690,6 +706,14 @@ def _make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec
     spec.versions.intersect(when_versions)
     return spec
 
+def _format_when_spec(spec: Spec) -> str:
+    parts = [spec.format("{name}{@versions}{variants}")]
+    if spec.architecture:
+        parts.append(f"platform={spec.platform}")
+    for dep in spec.dependencies():
+        parts.append(dep.format("^{name}{@versions}"))
+    return " ".join(p for p in parts if p)
+
 
 def _print_package(
     node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
@@ -761,8 +785,11 @@ def _print_package(
             elif name not in defined_variants or not extras.issubset(defined_variants[name]):
                 comment = "variants statically unused"
 
-        when_str = "" if when_spec == Spec("@:") else f', when="{when_spec}"'
-        line = f'depends_on("{child_spec}"{when_str})'
+        when_str = _format_when_spec(when_spec)
+        if when_str:
+            line = f'depends_on("{child_spec}", when="{when_str}")'
+        else:
+            line = f'depends_on("{child_spec}")'
         if comment:
             commented_lines.append((line, comment))
         else:

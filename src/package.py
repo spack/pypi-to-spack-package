@@ -797,9 +797,9 @@ def _print_package(
             uncommented_lines.append(line)
 
     if uncommented_lines:
-        print('    with default_args(type=("build", "run")):', file=f)
+        print('    with default_args(type="run"):', file=f)
     elif commented_lines:
-        print('    # with default_args(type=("build", "run")):', file=f)
+        print('    # with default_args(type="run"):', file=f)
 
     for line in uncommented_lines:
         print(f"        {line}", file=f)

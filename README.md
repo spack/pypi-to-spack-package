@@ -138,6 +138,7 @@ class PyBlack(PythonPackage):
      x.requires_dist,
      x.requires_python,
      x.sha256_digest,
+     x.path,
      x.packagetype = "sdist" AS is_sdist
 
    FROM `bigquery-public-data.pypi.distribution_metadata` AS x
@@ -171,7 +172,7 @@ class PyBlack(PythonPackage):
      ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END
    ) = 1
    ```
-   which should say something like "Successfully exported 5651880 rows into 101 files".
+   which should say something like "Successfully exported 5804957 rows into 101 files".
 3. Download the files using:
    ```console
    $ gsutil -m cp -r gs://<bucket>/pypi-export .

@@ -21,6 +21,7 @@ version TEXT NOT NULL,
 requires_dist TEXT,
 requires_python TEXT,
 sha256 BLOB(32) NOT NULL,
+path TEXT NOT NULL,
 is_sdist INTEGER
 )
 """

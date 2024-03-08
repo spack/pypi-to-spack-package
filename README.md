@@ -149,13 +149,13 @@ class PyBlack(PythonPackage):
     AND x.version = y.version
     AND x.packagetype = "bdist_wheel"
     AND y.packagetype = "bdist_wheel"
-    AND y.python_version != "py3"
+    AND y.python_version NOT IN ("py2.py3", "py3")
    )
 
    -- Select sdist and universal wheels
    WHERE (
      x.packagetype = "sdist"
-     OR x.packagetype = "bdist_wheel" AND x.python_version = "py3"
+     OR x.packagetype = "bdist_wheel" AND x.python_version IN ("py2.py3", "py3")
    ) AND y.name IS NULL
    -- AND x.upload_time >= "2024-03-01" -- If you already have a db, set this to last time fetched
 

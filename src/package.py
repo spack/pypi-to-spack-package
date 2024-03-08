@@ -44,6 +44,8 @@ DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/lat
 
 MAX_VERSIONS = 10
 
+KNOWN_PYTHON_VERSIONS = ((3, 7, 17), (3, 8, 18), (3, 9, 18), (3, 10, 13), (3, 11, 7), (3, 12, 1))
+
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
 
@@ -81,14 +83,7 @@ class VersionsLookup:
     def _python_versions(self) -> List[pv.Version]:
         all_versions = [
             pv.Version(f"{major}.{minor}.{p}")
-            for major, minor, patch in (
-                (3, 7, 17),
-                (3, 8, 18),
-                (3, 9, 18),
-                (3, 10, 13),
-                (3, 11, 7),
-                (3, 12, 1),
-            )
+            for major, minor, patch in KNOWN_PYTHON_VERSIONS
             for p in range(patch + 1)
         ]
         return list(reversed(all_versions))

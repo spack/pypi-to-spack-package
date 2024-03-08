@@ -468,7 +468,13 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
 
     _delete_old_releases(version_to_data)
 
-    for version, (requires_dist, requires_python, sha256_blob, path, sdist) in version_to_data.items():
+    for version, (
+        requires_dist,
+        requires_python,
+        sha256_blob,
+        path,
+        sdist,
+    ) in version_to_data.items():
         # Database cannot have duplicate versions.
         assert version not in version_info
 
@@ -696,7 +702,10 @@ def _print_package(
 
     for v in reversed(node.ordered_versions):
         sha256, path, sdist = node.version_info[v]
-        print(f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")', file=f)
+        print(
+            f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
+            file=f,
+        )
     print(file=f)
 
     for variant in sorted(defined_variants.get(node.name, ())):

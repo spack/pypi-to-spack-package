@@ -79,4 +79,3 @@ for file in sorted(os.listdir(path)):
                 entries = []
                 print(i)
 insert(entries)
-

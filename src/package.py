@@ -42,6 +42,8 @@ NAME_REGEX = re.compile(r"[-_.]+")
 
 DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/latest/data.db.gz"
 
+MAX_VERSIONS = 10
+
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
 
@@ -391,7 +393,9 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
     return v
 
 
-def _delete_old_releases(possible_versions: Dict[pv.Version, Any], keep=15) -> None:
+def _delete_old_releases(
+    possible_versions: Dict[pv.Version, Any], keep: int = MAX_VERSIONS
+) -> None:
     """Delete non-latest patch releases, and retain at most `keep` releases overall."""
     if not possible_versions:
         return

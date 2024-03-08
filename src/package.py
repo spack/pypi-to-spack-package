@@ -706,6 +706,7 @@ def _make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec
     spec.versions.intersect(when_versions)
     return spec
 
+
 def _format_when_spec(spec: Spec) -> str:
     parts = [spec.format("{name}{@versions}{variants}")]
     if spec.architecture:

@@ -404,14 +404,21 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
 def _delete_old_releases(
     possible_versions: Dict[pv.Version, Any], keep: int = MAX_VERSIONS
 ) -> None:
-    """Delete non-latest patch releases, and retain at most `keep` releases overall."""
+    """Delete non-latest patch releases, only keep pre-releases if they are the very latest release
+    and retain at most `keep` releases overall."""
     if not possible_versions:
         return
     versions_desc = sorted(possible_versions.keys(), reverse=True)
     curr = versions_desc[0]
     for i in range(1, len(versions_desc)):
         prev = versions_desc[i]
-        if keep <= 1 or len(curr.release) > 2 and curr.release[0:-1] == prev.release[0:-1]:
+        if (
+            keep <= 1
+            or len(curr.release) > 2
+            and curr.release[0:-1] == prev.release[0:-1]
+            or prev.is_prerelease
+            or prev.is_postrelease
+        ):
             del possible_versions[prev]
         else:
             keep -= 1

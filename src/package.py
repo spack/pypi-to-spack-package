@@ -396,12 +396,9 @@ def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.S
 def _acceptable_version(version: str) -> Optional[pv.Version]:
     """Maybe parse with packaging"""
     try:
-        v = pv.parse(version)
+        return pv.parse(version)
     except pv.InvalidVersion:
         return None
-    if v.is_prerelease or v.is_postrelease:
-        return None
-    return v
 
 
 def _delete_old_releases(

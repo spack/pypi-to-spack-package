@@ -108,7 +108,6 @@ class PyBlack(PythonPackage):
 
 ## TODO
 
-- [ ] Create a proper `url`
 - [ ] Update spack package.py files instead of creating new ones.
 
 ## Importing the PyPI database

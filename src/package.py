@@ -441,38 +441,36 @@ def _delete_old_releases(
 
 
 def _condensed_version_list(
-    _version_list: List[pv.Version], _ordered_versions: List[pv.Version]
+    _subset_of_versions: List[pv.Version], _all_versions: List[pv.Version]
 ) -> vn.VersionList:
-    version_list = [vn.StandardVersion.from_string(str(v)) for v in _version_list]
-    ordered_versions = [vn.StandardVersion.from_string(str(v)) for v in _ordered_versions]
-
-    version_list.sort()
+    subset = sorted(vn.StandardVersion.from_string(str(v)) for v in _subset_of_versions)
+    all = sorted(vn.StandardVersion.from_string(str(v)) for v in _all_versions)
 
     # Find corresponding index
-    i, j = ordered_versions.index(version_list[0]) + 1, 1
+    i, j = all.index(subset[0]) + 1, 1
     new_versions: List[vn.ClosedOpenRange] = []
 
     # If the first when entry corresponds to the first known version, use (-inf, ..] as lowerbound.
     if i == 1:
         lo = vn.StandardVersion.typemin()
     else:
-        lo = _best_lowerbound(ordered_versions[i - 2], version_list[0])
+        lo = _best_lowerbound(all[i - 2], subset[0])
 
-    while j < len(version_list):
-        if ordered_versions[i] != version_list[j]:
-            hi = _best_upperbound(version_list[j - 1], ordered_versions[i])
+    while j < len(subset):
+        if all[i] != subset[j]:
+            hi = _best_upperbound(subset[j - 1], all[i])
             new_versions.append(vn.VersionRange(lo, hi))
-            i = ordered_versions.index(version_list[j])
-            lo = _best_lowerbound(ordered_versions[i - 1], version_list[j])
+            i = all.index(subset[j])
+            lo = _best_lowerbound(all[i - 1], subset[j])
         i += 1
         j += 1
 
     # Similarly, if the last entry corresponds to the last known version,
     # assume the dependency continues to be used: [x, inf).
-    if i == len(ordered_versions):
+    if i == len(all):
         hi = vn.StandardVersion.typemax()
     else:
-        hi = _best_upperbound(version_list[j - 1], ordered_versions[i])
+        hi = _best_upperbound(subset[j - 1], all[i])
 
     new_versions.append(vn.VersionRange(lo, hi))
     return vn.VersionList(new_versions)
@@ -513,7 +511,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         if (v := _acceptable_version(version))
     }
 
-    _delete_old_releases(version_to_data)
+    # _delete_old_releases(version_to_data)
 
     for version, (
         requires_dist,
@@ -596,7 +594,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
     return Node(
         name,
         dep_to_when={
-            k: _condensed_version_list(sorted(dep_to_when[k]), ordered_versions)
+            k: _condensed_version_list(dep_to_when[k], ordered_versions)
             for k in dep_to_when
         },
         version_info=version_info,

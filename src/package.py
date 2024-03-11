@@ -181,8 +181,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
 
 
 def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
-    # TODO: os_name, sys_platform, platform_machine, platform_release, platform_system,
-    # platform_version, implementation_version
+    # TODO: os_name, platform_machine, platform_release, platform_version, implementation_version
 
     # Operator
     variable, op, value = node
@@ -222,20 +221,30 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
             return value.value.lower() != "cpython"
         return None
 
-    if variable.value == "platform_system" and op.value == "==":
+    platforms = ("linux", "cray", "darwin", "windows", "freebsd")
+
+    if variable.value == "platform_system" and op.value in ("==", "!="):
         platform = value.value.lower()
-        if platform in ("linux", "darwin", "windows"):
-            return [Spec(f"platform={platform}")]
+        if platform in platforms:
+            return [
+                Spec(f"platform={p}")
+                for p in platforms
+                if p != platform and op.value == "!=" or p == platform and op.value == "=="
+            ]
         return None
 
-    if variable.value == "sys_platform" and op.value == "==":
+    if variable.value == "sys_platform" and op.value in ("==", "!="):
         platform = value.value.lower()
         if platform == "win32":
             platform = "windows"
         elif platform == "linux2":
             platform = "linux"
-        if platform in ("linux", "darwin", "windows"):
-            return [Spec(f"platform={platform}")]
+        if platform in platforms:
+            return [
+                Spec(f"platform={p}")
+                for p in platforms
+                if p != platform and op.value == "!=" or p == platform and op.value == "=="
+            ]
         return None
 
     try:

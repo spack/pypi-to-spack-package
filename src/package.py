@@ -231,7 +231,7 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
                 for p in platforms
                 if p != platform and op.value == "!=" or p == platform and op.value == "=="
             ]
-        return None
+        return op.value == "!="  # we don't support it, so statically true/false.
 
     if variable.value == "sys_platform" and op.value in ("==", "!="):
         platform = value.value.lower()
@@ -245,7 +245,7 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
                 for p in platforms
                 if p != platform and op.value == "!=" or p == platform and op.value == "=="
             ]
-        return None
+        return op.value == "!="  # we don't support it, so statically true/false.
 
     try:
         if variable.value == "extra":
@@ -594,8 +594,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
     return Node(
         name,
         dep_to_when={
-            k: _condensed_version_list(dep_to_when[k], ordered_versions)
-            for k in dep_to_when
+            k: _condensed_version_list(dep_to_when[k], ordered_versions) for k in dep_to_when
         },
         version_info=version_info,
         ordered_versions=ordered_versions,
@@ -746,10 +745,13 @@ def _print_package(
         print(file=f)
         return
 
+    has_prereleases = any(v.is_prerelease for v in node.ordered_versions)
+
     for v in reversed(node.ordered_versions):
         sha256, path, sdist = node.version_info[v]
+        preferred = "" if not has_prereleases or v.is_prerelease else ", preferred=True"
         print(
-            f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
+            f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}"{preferred})',
             file=f,
         )
     print(file=f)

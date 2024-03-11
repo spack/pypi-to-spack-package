@@ -266,12 +266,18 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
     if versions is None:
         return None
 
-    if versions.satisfies(UNSUPPORTED_PYTHON):
-        return False
+    simplify_python_constraint(versions)
 
-    spec = Spec("^python")
-    spec.dependencies("python")[0].versions = versions
-    return [spec]
+    if not versions:
+        # No supported versions for python remain, so statically false.
+        return False
+    elif versions == vn.any_version:
+        # No constraints on python, so statically true.
+        return True
+    else:
+        spec = Spec("^python")
+        spec.dependencies("python")[0].versions = versions
+        return [spec]
 
 
 def _eval_node(node) -> Union[None, bool, List[Spec]]:
@@ -472,6 +478,23 @@ def _condensed_version_list(
     return vn.VersionList(new_versions)
 
 
+def simplify_python_constraint(versions: vn.VersionList) -> None:
+    """Modifies a version list of python versions in place to remove redundant constraints
+    implied by UNSUPPORTED_PYTHON."""
+    # First delete everything implied by UNSUPPORTED_PYTHON
+    vs = versions.versions
+    while vs and vs[0].satisfies(UNSUPPORTED_PYTHON):
+        del vs[0]
+
+    if not vs:
+        return
+
+    # Remove any redundant lowerbound, e.g. @3.7:3.9 becomes @:3.9 if @:3.6 unsupported.
+    union = UNSUPPORTED_PYTHON._union_if_not_disjoint(vs[0])
+    if union:
+        vs[0] = union
+
+
 def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
     dep_to_when: Dict[DepToWhen, Set[pv.Version]] = defaultdict(set)
     version_info: Dict[pv.Version, str] = {}
@@ -516,24 +539,16 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
             versions = _pkg_specifier_set_to_version_list("python", specifier_set, version_lookup)
 
             # First delete everything implied by UNSUPPORTED_PYTHON
-            vs = versions.versions
-            while vs and vs[0].satisfies(UNSUPPORTED_PYTHON):
-                del vs[0]
+            simplify_python_constraint(versions)
 
-            if not vs:
+            if not versions:
                 print(
                     f"{name}@{version}: no supported python versions: {requires_python}",
                     file=sys.stderr,
                 )
                 continue
-
-            # Remove any redundant lowerbound, e.g. @3.7:3.9 becomes @:3.9 if @:3.6 unsupported.
-            union = UNSUPPORTED_PYTHON._union_if_not_disjoint(vs[0])
-            if union:
-                vs[0] = union
-
-            # Only emit non-trivial constraints on python.
-            if versions != vn.any_version:
+            elif versions != vn.any_version:
+                # Only emit non-trivial constraints on python.
                 to_insert.append((("python", versions, None, None, frozenset()), version))
 
         for requirement_str in json.loads(requires_dist):

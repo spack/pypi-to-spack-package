@@ -837,7 +837,7 @@ def _print_package(
     print(file=f)
 
 
-def _generate(pkg_name: str, extras: List[str]) -> None:
+def _generate(pkg_name: str, extras: List[str], directory: Optional[str]) -> None:
     # Maps package name to (Node, seen_variants) tuples. The set of variants is those
     # variants that can possibly be turned on. It's intended to list a subset of the
     # variants defined by the package, as a means to omit variants like +test, +dev, and
@@ -898,11 +898,15 @@ def _generate(pkg_name: str, extras: List[str]) -> None:
     # Simplify to a map from package name to a set of variants that are effectively used.
     defined_variants = {name: variants for name, (_, variants) in packages.items()}
 
-    packages_dir = pathlib.Path("pypi", "packages")
-    packages_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = pathlib.Path(directory or "pypi")
+    packages_dir = output_dir / "packages"
 
-    with open(packages_dir / ".." / "repo.yaml", "w") as f:
-        f.write("repo:\n  namespace: python\n")
+    if not output_dir.exists():
+        packages_dir.mkdir(parents=True)
+
+    if not (output_dir / "repo.yaml").exists():
+        with open(output_dir / "repo.yaml", "w") as f:
+            f.write("repo:\n  namespace: python\n")
 
     for name, (node, _) in packages.items():
         spack_name = f"{SPACK_PREFIX}{name}"
@@ -928,6 +932,7 @@ if __name__ == "__main__":
     parser.add_argument("--db", default="data.db", help="The database file to read from")
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     p_generate = subparsers.add_parser("generate", help="Generate a package.py file")
+    p_generate.add_argument("--directory", "-o", help="Output directory")
     p_generate.add_argument("package", help="The package name on PyPI")
     p_generate.add_argument(
         "extras", nargs="*", help="Extras / variants to define on given package"
@@ -973,4 +978,4 @@ if __name__ == "__main__":
             )
 
     elif args.command == "generate":
-        _generate(_normalized_name(args.package), args.extras)
+        _generate(_normalized_name(args.package), args.extras, args.directory)

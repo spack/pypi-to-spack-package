@@ -99,13 +99,13 @@ class PyBlack(PythonPackage):
     `depends_on(..., when="+a +b")` `depends_on(..., when="+c")` and operators compose fine.
   - ✅ `python_version <= "3.8" or python_version >= "3.10` statements are simplified further
     to a single constraint `when="^python@:3.8,3.10:"`.
+  - ✅ The variables `sys_platform` and `platform_system` with `==` and `!=` operators are
+    translated to one or more `platform=...` for Linux (+cray), Darwin, Windows and FreeBSD.
   - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
     because the `in` and `not in` operators use the right-hand side as literal string, instead of
     a version list. So, I have not implemented this.
-  - ✅ The variables `sys_platform` and `platform_system` with `==` and `!=` operators are
-    translated to one or more `platform=...` for Linux (+cray), Darwin, Windows and FreeBSD.
-  - ❌ The variables `os_name`, `platform_machine`, `platform_release`,
-    `platform_system`, `platform_version`, `implementation_version` are still to-do, if possible.
+  - ❌ The variables `os_name`, `platform_machine`, `platform_release`, `platform_version`,
+  `implementation_version` are still not implemented (some cannot be?).
 
 ## TODO
 

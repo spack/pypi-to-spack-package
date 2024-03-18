@@ -81,12 +81,11 @@ class VersionsLookup:
         return sorted(vv for v, in query if (vv := _acceptable_version(v)))
 
     def _python_versions(self) -> List[pv.Version]:
-        all_versions = [
+        return [
             pv.Version(f"{major}.{minor}.{p}")
             for major, minor, patch in KNOWN_PYTHON_VERSIONS
             for p in range(patch + 1)
         ]
-        return list(reversed(all_versions))
 
     def __getitem__(self, name: str) -> List[pv.Version]:
         result = self.cache.get(name)

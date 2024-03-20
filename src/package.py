@@ -17,7 +17,7 @@ import sqlite3
 import sys
 import urllib.request
 from collections import defaultdict
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import packaging.version as pv
 import spack.version as vn
@@ -28,7 +28,6 @@ from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
 from spack.util.naming import mod_to_class
-from spack.version.version_types import VersionStrComponent, _prev_version_str_component
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
@@ -90,29 +89,9 @@ class VersionsLookup:
         return result
 
 
-def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
-    """Translate Specifier <x into a Spack range upperbound :y"""
-    # TODO: <0 is broken.
-    if len(v.version) == 0:
-        return v
-    elif isinstance(v.version[-1], VersionStrComponent):
-        prev = _prev_version_str_component(v.version[-1])
-    elif v.version[-1] == 0:
-        return prev_version_for_range(v.up_to(len(v) - 1))
-    else:
-        prev = v.version[-1] - 1
-
-    # Construct a string-version for printing
-    string_components = []
-    for part, sep in zip(v.version[:-1], v.separators):
-        string_components.append(str(part))
-        string_components.append(str(sep))
-    string_components.append(str(prev))
-
-    return vn.StandardVersion("".join(string_components), v.version[:-1] + (prev,), v.separators)
-
-
-def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[vn.VersionList]:
+def _eval_python_version_marker(
+    variable: str, op: str, value: str, version_lookup: VersionsLookup
+) -> Optional[vn.VersionList]:
     # Do everything in terms of ranges for simplicity.
 
     # `value` has semver semantics. Literal `3` is really `3.0.0`.
@@ -124,7 +103,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
     # `python_version > "3.6.1"` is translated as `@3.7:`
     # `python_version < "3"` is translated as `@:2`
     # `python_version < "3.6"` is translated as `@:3.5`
-    # `python_version < "3.6.1"` is translated as `@:3.6`  # note...
+    # `python_version < "3.6.1"` is translated as `@:3.6`  # note... currently incorrect.
     # `python_version == "3"` is translated as `@3.0`
     # `python_full_version > "3"` is translated as `@3.0.1:`
     # `python_full_version > "3.6"` is translated as `@3.6.1:`
@@ -135,45 +114,12 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
     if op not in ("==", ">", ">=", "<", "<=", "!="):
         return None
 
-    try:
-        vv = pv.Version(value)
-    except pv.InvalidVersion:
-        print(f"could not parse version: `{variable} {op} {value}`", file=sys.stderr)
-        return None
-
-    if vv.is_prerelease or vv.is_postrelease or vv.epoch:
-        print(f"cannot deal with version: `{variable} {op} {value}`", file=sys.stderr)
-        return None
-    if variable == "python_version":
-        v = vn.StandardVersion.from_string(f"{vv.major}.{vv.minor}")
-    elif variable == "python_full_version":
-        v = vn.StandardVersion.from_string(f"{vv.major}.{vv.minor}.{vv.micro}")
-
-    if op == "==":
-        return vn.VersionList([vn.VersionRange(v, v)])
-    elif op == ">":
-        return vn.VersionList([vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax())])
-    elif op == ">=":
-        return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
-    elif op == "<":
-        # TODO: This is currently wrong for python_version < x.y.z.
-        return vn.VersionList(
-            [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
-        )
-    elif op == "<=":
-        return vn.VersionList([vn.VersionRange(vn.StandardVersion.typemin(), v)])
-    elif op == "!=":
-        return vn.VersionList(
-            [
-                vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
-                vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax()),
-            ]
-        )
-    print(f"cannot deal with operator: `{variable} {op} {value}`", file=sys.stderr)
-    return None
+    return _pkg_specifier_set_to_version_list(
+        "python", SpecifierSet(f"{op}{value}"), version_lookup
+    )
 
 
-def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
+def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None, bool, List[Spec]]:
     # TODO: os_name, platform_machine, platform_release, platform_version, implementation_version
 
     # Operator
@@ -254,7 +200,7 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
     if variable.value not in ("python_version", "python_full_version"):
         return None
 
-    versions = _eval_python_version_marker(variable.value, op.value, value.value)
+    versions = _eval_python_version_marker(variable.value, op.value, value.value, version_lookup)
 
     if versions is None:
         return None
@@ -273,10 +219,10 @@ def _eval_constraint(node: tuple) -> Union[None, bool, List[Spec]]:
         return [spec]
 
 
-def _eval_node(node) -> Union[None, bool, List[Spec]]:
+def _eval_node(node, version_lookup: VersionsLookup) -> Union[None, bool, List[Spec]]:
     if isinstance(node, tuple):
-        return _eval_constraint(node)
-    return _do_evaluate_marker(node)
+        return _eval_constraint(node, version_lookup)
+    return _do_evaluate_marker(node, version_lookup)
 
 
 def _intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
@@ -307,65 +253,67 @@ def _union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     return list(set(lhs + rhs))
 
 
-def _do_evaluate_marker(node: list) -> Union[None, bool, List[Spec]]:
-    """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
-    # Format is like this.
-    # python_version > "3.6" or (python_version == "3.6" and os_name == "unix")
-    # parsed to
-    # [
-    #     (<Variable('python_version')>, <Op('>')>, <Value('3.6')>),
-    #     'and',
-    #     [
-    #         (<Variable('python_version')>, <Op('==')>, <Value('3.6')>),
-    #         'or',
-    #         (<Variable('os_name')>, <Op('==')>, <Value('unix')>)
-    #     ]
-    # ]
-    # Apparently it's flattened.
+def _eval_and(group: List, version_lookup):
+    lhs = _eval_node(group[0], version_lookup)
+    if lhs is False:
+        return False
 
-    assert isinstance(node, list) and len(node) > 0
-
-    lhs = _eval_node(node[0])
-
-    for i in range(2, len(node), 2):
-        # Actually op should be constant: x and y and z. we don't assert it here.
-        op = node[i - 1]
-        assert op in ("and", "or")
-        if op == "and":
-            if lhs is False:
+    for node in group[1:]:
+        rhs = _eval_node(node, version_lookup)
+        if rhs is False:  # false beats none
+            return False
+        elif lhs is None or rhs is None:  # none beats true / List[Spec]
+            lhs = None
+        elif rhs is True:
+            continue
+        elif lhs is True:
+            lhs = rhs
+        else:  # Intersection of specs
+            lhs = _intersection(lhs, rhs)
+            if not lhs:  # empty intersection
                 return False
-            rhs = _eval_node(node[i])
-            if rhs is False:
-                return False
-            elif lhs is None or rhs is None:
-                lhs = None
-            elif lhs is True:
-                lhs = rhs
-            elif rhs is not True:  # Intersection of specs
-                lhs = _intersection(lhs, rhs)
-                # The intersection can be empty, which means it's statically false.
-                if not lhs:
-                    return False
-        elif op == "or":
-            if lhs is True:
-                return True
-            rhs = _eval_node(node[i])
-            if rhs is True:
-                return True
-            elif lhs is None or rhs is None:
-                lhs = None
-            elif lhs is False:
-                lhs = rhs
-            elif rhs is not False:
-                lhs = _union(lhs, rhs)
     return lhs
 
 
-def _evaluate_marker(m: Marker) -> Union[bool, None, List[Spec]]:
+def _do_evaluate_marker(
+    node: list, version_lookup: VersionsLookup
+) -> Union[None, bool, List[Spec]]:
+    """A marker is an expression tree, that we can sometimes translate to the Spack DSL."""
+
+    assert isinstance(node, list) and len(node) > 0
+
+    # Inner array is "and", outer array is "or".
+    groups = [[node[0]]]
+    for i in range(2, len(node), 2):
+        op = node[i - 1]
+        if op == "or":
+            groups.append([node[i]])
+        elif op == "and":
+            groups[-1].append(node[i])
+        else:
+            assert False, f"unexpected operator {op}"
+
+    lhs = _eval_and(groups[0], version_lookup)
+    if lhs is True:
+        return True
+    for group in groups[1:]:
+        rhs = _eval_and(group, version_lookup)
+        if rhs is True:
+            return True
+        elif lhs is None or rhs is None:
+            lhs = None
+        elif lhs is False:
+            lhs = rhs
+        elif rhs is not False:
+            lhs = _union(lhs, rhs)
+    return lhs
+
+
+def _evaluate_marker(m: Marker, version_lookup: VersionsLookup) -> Union[bool, None, List[Spec]]:
     """Evaluate the marker expression tree either (1) as a list of specs that constitute the when
     conditions, (2) statically as True or False given that we only support cpython, (3) None if
     we can't translate it into Spack DSL."""
-    return _do_evaluate_marker(m._markers)
+    return _do_evaluate_marker(m._markers, version_lookup)
 
 
 def _normalized_name(name):
@@ -394,35 +342,11 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
         return None
 
 
-def _delete_old_releases(
-    possible_versions: Dict[pv.Version, Any], keep: int = MAX_VERSIONS
-) -> None:
-    """Delete non-latest patch releases, only keep pre-releases if they are the very latest release
-    and retain at most `keep` releases overall."""
-    if not possible_versions:
-        return
-    versions_desc = sorted(possible_versions.keys(), reverse=True)
-    curr = versions_desc[0]
-    for i in range(1, len(versions_desc)):
-        prev = versions_desc[i]
-        if (
-            keep <= 1
-            or len(curr.release) > 2
-            and curr.release[0:-1] == prev.release[0:-1]
-            or prev.is_prerelease
-            or prev.is_postrelease
-        ):
-            del possible_versions[prev]
-        else:
-            keep -= 1
-            curr = prev
-
-
 def _condensed_version_list(
     _subset_of_versions: List[pv.Version], _all_versions: List[pv.Version]
 ) -> vn.VersionList:
-    subset = sorted(vn.StandardVersion.from_string(str(v)) for v in _subset_of_versions)
-    all = sorted(vn.StandardVersion.from_string(str(v)) for v in _all_versions)
+    subset = [vn.StandardVersion.from_string(str(v)) for v in _subset_of_versions]
+    all = [vn.StandardVersion.from_string(str(v)) for v in _all_versions]
 
     # Find corresponding index
     i, j = all.index(subset[0]) + 1, 1
@@ -489,8 +413,6 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         if (v := _acceptable_version(version))
     }
 
-    # _delete_old_releases(version_to_data)
-
     for version, (
         requires_dist,
         requires_python,
@@ -537,7 +459,7 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
             child = _normalized_name(r.name)
 
             if r.marker is not None:
-                result = _evaluate_marker(r.marker)
+                result = _evaluate_marker(r.marker, version_lookup)
                 if result is False:  # skip: statically unsatisfiable
                     continue
                 elif result is True:  # unconditional depends_on
@@ -572,123 +494,21 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
     return Node(
         name,
         dep_to_when={
-            k: _condensed_version_list(dep_to_when[k], ordered_versions) for k in dep_to_when
+            k: _condensed_version_list(sorted(dep_to_when[k]), ordered_versions) for k in dep_to_when
         },
         version_info=version_info,
         ordered_versions=ordered_versions,
     )
 
 
-def _parse_without_trailing_zeros(version: str) -> vn.StandardVersion:
-    """Parse as Spack version without trailing zeros, so "1.2.0" becomes "1.2"."""
-    v = vn.StandardVersion.from_string(version)
-    i = len(v)
-    while i > 0 and v.version[i - 1] == 0:
-        i -= 1
-    return v if i == len(v) else v.up_to(i)
-
-
 def _pkg_specifier_set_to_version_list(
     pkg: str, specifier_set: SpecifierSet, version_lookup: VersionsLookup
 ) -> vn.VersionList:
-    # Turns out translating a specifier set to a version list is non-trivial and cannot be done
-    # statically. Just >= and < are fine, and ~= which can be expressed in those terms:
-    # ">=1.2" is "@1.2:"       note: ">=1.2.0" is "@1.2:" drop trailing zeros
-    # "<1.2" is "@:1.1"        note: "<1.2.0" is "@:1.1" drop trailing zeros
-    # "~1.2" is ">=1.2,<1.3"   note: "~1.2.0" is ">=1.2.0,<1.2.1" don't drop trailing zeros
-    # "==1.2.*" is @1.2        note: "==1.2.0.*" is "@1.2.0.0" don't drop trailing zeros
-    # "!=1.2.*" is @1.2        note: "!=1.2.0.*" is "@:1.1,1.2.1:" don't drop trailing zeros
-    # The rest of the operators is problematic:
-    # ">1.2"  isn't "@1.3:"    since "1.2.0.0.0.0.1" in Specifier(">1.2").
-    # "<=1.2" isn't "@:1.2.0"  since "1.2.0.1" not in Specifier("<=1.2")
-    # "==1.2" isn't "@1.2"     since "1.2.3" not in Specifier("==1.2")
-    # "==1.2" isn't "@=1.2"    since "1.2.0" in Specifier("==1.2")
-    # "!=1.2" means "<1.2,>1.2" so has the same issues as ">1.2".
-    # For the latter, look up the matching version and rewrite in terms of ">=" and "<" relative
-    # to that specific version.
-
-    # TODO: what the hell is "===1.2" triple equals.
-
-    out = vn.VersionList([":"])
-
-    for specifier in specifier_set:
-        # First the trivial specifiers
-        if specifier.operator == ">=":
-            v = _parse_without_trailing_zeros(specifier.version)
-            new = [vn.VersionRange(v, vn.StandardVersion.typemax())]
-        elif specifier.operator == "<":
-            v = _parse_without_trailing_zeros(specifier.version)
-            new = [vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v))]
-        elif specifier.operator == "~=":
-            v = vn.StandardVersion.from_string(specifier.version)
-            new = [vn.VersionRange(v, v.up_to(len(v) - 1))]
-        elif specifier.version.endswith(".*") and specifier.operator == "==":
-            v = vn.StandardVersion.from_string(specifier.version[:-2])
-            new = [vn.VersionRange(v, v)]
-        elif specifier.version.endswith(".*") and specifier.operator == "!=":
-            v = vn.StandardVersion.from_string(specifier.version[:-2])
-            new = [
-                vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
-                vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax()),
-            ]
-        else:
-            # Then the specifiers that require a lookup.
-            known_versions = version_lookup[pkg]
-            v = pv.parse(specifier.version)
-
-            if specifier.operator == ">" or specifier.operator == "<=":
-                # Get the first index greater than v
-                idx = bisect.bisect_right(known_versions, v)
-
-                if specifier.operator == ">":
-                    if idx < len(known_versions):
-                        prev = vn.StandardVersion.from_string(str(known_versions[idx - 1]))
-                        curr = vn.StandardVersion.from_string(str(known_versions[idx]))
-                        lo = _best_lowerbound(prev, curr)
-                        new = [vn.VersionRange(lo, vn.StandardVersion.typemax())]
-                    else:
-                        v = vn.StandardVersion.from_string(specifier.version)
-                        new = [vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax())]
-                else:
-                    if 0 < idx < len(known_versions):
-                        prev = vn.StandardVersion.from_string(str(known_versions[idx - 1]))
-                        curr = vn.StandardVersion.from_string(str(known_versions[idx]))
-                        hi = _best_upperbound(prev, curr)
-                        new = [vn.VersionRange(vn.StandardVersion.typemin(), hi)]
-                    else:
-                        v = vn.StandardVersion.from_string(specifier.version)
-                        new = [
-                            vn.VersionRange(
-                                vn.StandardVersion.typemin(), prev_version_for_range(v)
-                            )
-                        ]
-
-            elif specifier.operator == "==" or specifier.operator == "!=":
-                # Get the index where equality may hold.
-                idx = bisect.bisect_left(known_versions, v)
-                if idx != len(known_versions) and v == known_versions[idx]:
-                    # If there is an exact match, use that (so ==3 matches 3.0, use 3.0)
-                    spack_v = vn.StandardVersion.from_string(str(known_versions[idx]))
-                else:
-                    # Otherwise, stick to what was given literally
-                    spack_v = vn.StandardVersion.from_string(specifier.version)
-
-                if specifier.operator == "==":
-                    new = [vn.VersionRange(spack_v, spack_v)]
-                else:
-                    new = [
-                        vn.VersionRange(
-                            vn.StandardVersion.typemin(), prev_version_for_range(spack_v)
-                        ),
-                        vn.VersionRange(vn._next_version(spack_v), vn.StandardVersion.typemax()),
-                    ]
-
-            else:
-                raise ValueError(f"Not implemented: {specifier}")
-
-        out = out.intersection(vn.VersionList(new))
-
-    return out
+    all = version_lookup[pkg]
+    matching = [s for s in specifier_set.filter(all, prereleases=True)]
+    if not matching:
+        return vn.VersionList()
+    return _condensed_version_list(matching, all)
 
 
 def _make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:

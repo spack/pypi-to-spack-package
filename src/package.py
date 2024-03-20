@@ -501,15 +501,19 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         ordered_versions=ordered_versions,
     )
 
+evalled = dict()
 
 def _pkg_specifier_set_to_version_list(
     pkg: str, specifier_set: SpecifierSet, version_lookup: VersionsLookup
 ) -> vn.VersionList:
+    key = (pkg, specifier_set)
+    if key in evalled:
+        return evalled[key]
     all = version_lookup[pkg]
     matching = [s for s in specifier_set.filter(all, prereleases=True)]
-    if not matching:
-        return vn.VersionList()
-    return _condensed_version_list(matching, all)
+    result = vn.VersionList() if not matching else _condensed_version_list(matching, all)
+    evalled[key] = result
+    return result
 
 
 def _make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:

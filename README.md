@@ -4,6 +4,14 @@ Note: this is work in progress.
 
 ## Usage
 
+First checkout a Spack version that supports correct pre-release ordering.
+
+```console
+$ cd spack
+$ git fetch origin pull/43140/head:pr-43140
+$ git checkout pr-43140
+```
+
 Let's fetch the PyPI database and have a look what's in there.
 
 ```console
@@ -91,8 +99,9 @@ class PyBlack(PythonPackage):
 ## Issues
 
 - **PKG-INFO**: some packages do not provide the `Requires-Dist` fields in the `PKG-INFO` file,
-  meaning that we do not know their dependencies. This is a shortcoming of the PyPI database.
-- **Build dependencies**: currently we cannot generate build dependencies, as they are lacking
+  meaning that this project cannot know their dependencies. This is a shortcoming of the PyPI
+  database.
+- **Build dependencies**: currently it cannot generate build dependencies, as they are lacking
   from the PyPI database.
 - **Markers**: not all can be directly translated to a single `when` condition:
   - ✅ `extra == "a" and extra == "b" or extra == "c"`: gets translated into 
@@ -101,7 +110,7 @@ class PyBlack(PythonPackage):
     to a single constraint `when="^python@:3.8,3.10:"`.
   - ✅ The variables `sys_platform` and `platform_system` with `==` and `!=` operators are
     translated to one or more `platform=...` for Linux (+cray), Darwin, Windows and FreeBSD.
-  - ❌ No support for correctly ordered pre-releases.
+  - ✅ Support for correctly ordered pre-releases (with https://github.com/spack/spack/pull/43140)
   - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
     because the `in` and `not in` operators use the right-hand side as literal string, instead of
     a version list. So, I have not implemented this.

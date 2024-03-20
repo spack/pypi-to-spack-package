@@ -28,7 +28,7 @@ from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
 from spack.util.naming import mod_to_class
-from spack.version.version_types import VersionStrComponent, prev_version_str_component
+from spack.version.version_types import VersionStrComponent, _prev_version_str_component
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
@@ -71,13 +71,7 @@ class VersionsLookup:
         self.cache: Dict[str, List[pv.Version]] = {}
 
     def _query(self, name: str) -> List[pv.Version]:
-        query = self.cursor.execute(
-            """
-            SELECT version
-            FROM versions
-            WHERE name = ?""",
-            (name,),
-        )
+        query = self.cursor.execute("SELECT version FROM versions WHERE name = ?", (name,))
         return sorted(vv for v, in query if (vv := _acceptable_version(v)))
 
     def _python_versions(self) -> List[pv.Version]:
@@ -102,7 +96,7 @@ def prev_version_for_range(v: vn.StandardVersion) -> vn.StandardVersion:
     if len(v.version) == 0:
         return v
     elif isinstance(v.version[-1], VersionStrComponent):
-        prev = prev_version_str_component(v.version[-1])
+        prev = _prev_version_str_component(v.version[-1])
     elif v.version[-1] == 0:
         return prev_version_for_range(v.up_to(len(v) - 1))
     else:
@@ -158,7 +152,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
     if op == "==":
         return vn.VersionList([vn.VersionRange(v, v)])
     elif op == ">":
-        return vn.VersionList([vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())])
+        return vn.VersionList([vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax())])
     elif op == ">=":
         return vn.VersionList([vn.VersionRange(v, vn.StandardVersion.typemax())])
     elif op == "<":
@@ -172,7 +166,7 @@ def _eval_python_version_marker(variable: str, op: str, value: str) -> Optional[
         return vn.VersionList(
             [
                 vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
-                vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
+                vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax()),
             ]
         )
     print(f"cannot deal with operator: `{variable} {op} {value}`", file=sys.stderr)
@@ -399,11 +393,8 @@ def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.S
 def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
     i = 1
     m = min(len(prev), len(curr))
-    while i < m and prev.version[i] == curr.version[i]:
+    while i < m and prev.version[0][i] == curr.version[0][i]:
         i += 1
-
-    # if prev is a prefix of curr, curr must have an additional component.
-    # if not a prefix, truncate on the first differing component.
     return curr if i == m else curr.up_to(i + 1)
 
 
@@ -650,7 +641,7 @@ def _pkg_specifier_set_to_version_list(
             v = vn.StandardVersion.from_string(specifier.version[:-2])
             new = [
                 vn.VersionRange(vn.StandardVersion.typemin(), prev_version_for_range(v)),
-                vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax()),
+                vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax()),
             ]
         else:
             # Then the specifiers that require a lookup.
@@ -669,7 +660,7 @@ def _pkg_specifier_set_to_version_list(
                         new = [vn.VersionRange(lo, vn.StandardVersion.typemax())]
                     else:
                         v = vn.StandardVersion.from_string(specifier.version)
-                        new = [vn.VersionRange(vn.next_version(v), vn.StandardVersion.typemax())]
+                        new = [vn.VersionRange(vn._next_version(v), vn.StandardVersion.typemax())]
                 else:
                     if 0 < idx < len(known_versions):
                         prev = vn.StandardVersion.from_string(str(known_versions[idx - 1]))
@@ -701,7 +692,7 @@ def _pkg_specifier_set_to_version_list(
                         vn.VersionRange(
                             vn.StandardVersion.typemin(), prev_version_for_range(spack_v)
                         ),
-                        vn.VersionRange(vn.next_version(spack_v), vn.StandardVersion.typemax()),
+                        vn.VersionRange(vn._next_version(spack_v), vn.StandardVersion.typemax()),
                     ]
 
             else:

@@ -7,3 +7,6 @@ skip_magic_trailing_comma = true
 line_length = 99
 profile = "black"
 honor_noqa = true
+
+[pytest]
+testpaths = ["tests"]

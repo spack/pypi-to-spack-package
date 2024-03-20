@@ -373,25 +373,19 @@ def _normalized_name(name):
 
 
 def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.StandardVersion:
-    """Return the most general upperound that includes curr but not next.
-    Invariant is that curr < next."""
+    """Return the most general upperound that includes curr but not next. Invariant is that
+    curr < next."""
 
     # i is the first index where the two versions differ.
-    i = 1
+    i = 0
     m = min(len(curr), len(next))
-    while i < m and curr.version[i] == next.version[i]:
+    while i < m and curr.version[0][i] == next.version[0][i]:
         i += 1
-
-    # Pad with ".0"
-    if i > m:
-        return vn.StandardVersion.from_string(f"{curr}{(len(next) - len(curr)) * '.0'}")
-
-    # Truncate if necessary
     return curr if i == m else curr.up_to(i + 1)
 
 
 def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
-    i = 1
+    i = 0
     m = min(len(prev), len(curr))
     while i < m and prev.version[0][i] == curr.version[0][i]:
         i += 1

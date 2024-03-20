@@ -43,7 +43,7 @@ DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/lat
 
 MAX_VERSIONS = 10
 
-KNOWN_PYTHON_VERSIONS = ((3, 7, 17), (3, 8, 18), (3, 9, 18), (3, 10, 13), (3, 11, 7), (3, 12, 1))
+KNOWN_PYTHON_VERSIONS = ((3, 7, 17), (3, 8, 18), (3, 9, 18), (3, 10, 13), (3, 11, 7), (3, 12, 1), (3, 13, 0))
 
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 

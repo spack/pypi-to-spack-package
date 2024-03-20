@@ -96,6 +96,20 @@ class PyBlack(PythonPackage):
 
 ```
 
+## Support for specifiers / markers
+- ✅ `extra == "a" and extra == "b" or extra == "c"`: gets translated into
+  `depends_on(..., when="+a +b")` `depends_on(..., when="+c")` and operators compose fine.
+- ✅ `python_version <= "3.8" or python_version >= "3.10` statements are simplified further
+  to a single constraint `when="^python@:3.8,3.10:"`.
+- ✅ The variables `sys_platform` and `platform_system` with `==` and `!=` operators are
+  translated to one or more `platform=...` for Linux (+cray), Darwin, Windows and FreeBSD.
+- ✅ Support for correctly ordered pre-releases through https://github.com/spack/spack/pull/43140
+- ✅ Specifiers for dependencies (`>=3.7`, `~=3.7.1` etc) are not directly translated, but
+  evaluated on all known versions of the dependency, and then simplified into a Spack range. This
+  ensures that we don't have to deal with edge cases (of which there are many). The downside of
+  this approach is that it's rather slow, since it does not perform binary search.
+
+
 ## Issues
 
 - **PKG-INFO**: some packages do not provide the `Requires-Dist` fields in the `PKG-INFO` file,
@@ -104,13 +118,6 @@ class PyBlack(PythonPackage):
 - **Build dependencies**: currently it cannot generate build dependencies, as they are lacking
   from the PyPI database.
 - **Markers**: not all can be directly translated to a single `when` condition:
-  - ✅ `extra == "a" and extra == "b" or extra == "c"`: gets translated into 
-    `depends_on(..., when="+a +b")` `depends_on(..., when="+c")` and operators compose fine.
-  - ✅ `python_version <= "3.8" or python_version >= "3.10` statements are simplified further
-    to a single constraint `when="^python@:3.8,3.10:"`.
-  - ✅ The variables `sys_platform` and `platform_system` with `==` and `!=` operators are
-    translated to one or more `platform=...` for Linux (+cray), Darwin, Windows and FreeBSD.
-  - ✅ Support for correctly ordered pre-releases (with https://github.com/spack/spack/pull/43140)
   - ❌ `python_version in "3.7,3.8,3.9"`: could be translated into `^python@3.7:3.9`, but is not,
     because the `in` and `not in` operators use the right-hand side as literal string, instead of
     a version list. So, I have not implemented this.

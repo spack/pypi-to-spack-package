@@ -238,7 +238,7 @@ def _intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
 def _union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     """This case is trivial: (a or b) or (c or d) = a or b or c or d, BUT do a simplification
     in case the rhs only expresses constraints on versions."""
-    if len(rhs) == 1 and not rhs[0].variants and not rhs[0].platform:
+    if len(rhs) == 1 and not rhs[0].variants and not rhs[0].architecture:
         python, *_ = rhs[0].dependencies("python")
         for l in lhs:
             l.versions.add(python.versions)

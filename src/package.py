@@ -28,6 +28,8 @@ from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
 from spack.util.naming import mod_to_class
+from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC
+from spack.version.version_types import VersionStrComponent
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
@@ -43,7 +45,15 @@ DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/lat
 
 MAX_VERSIONS = 10
 
-KNOWN_PYTHON_VERSIONS = ((3, 7, 17), (3, 8, 18), (3, 9, 18), (3, 10, 13), (3, 11, 7), (3, 12, 1), (3, 13, 0))
+KNOWN_PYTHON_VERSIONS = (
+    (3, 7, 17),
+    (3, 8, 18),
+    (3, 9, 18),
+    (3, 10, 13),
+    (3, 11, 7),
+    (3, 12, 1),
+    (3, 13, 0),
+)
 
 DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
 
@@ -92,25 +102,10 @@ class VersionsLookup:
 def _eval_python_version_marker(
     variable: str, op: str, value: str, version_lookup: VersionsLookup
 ) -> Optional[vn.VersionList]:
-    # Do everything in terms of ranges for simplicity.
-
-    # `value` has semver semantics. Literal `3` is really `3.0.0`.
-    # `python_version`: major.minor
-    # `python_full_version`: major.minor.patch  (TODO: rc/alpha/beta etc)
-
-    # `python_version > "3"` is translated as `@3.1:`
-    # `python_version > "3.6"` is translated as `@3.7:`
-    # `python_version > "3.6.1"` is translated as `@3.7:`
-    # `python_version < "3"` is translated as `@:2`
-    # `python_version < "3.6"` is translated as `@:3.5`
-    # `python_version < "3.6.1"` is translated as `@:3.6`  # note... currently incorrect.
-    # `python_version == "3"` is translated as `@3.0`
-    # `python_full_version > "3"` is translated as `@3.0.1:`
-    # `python_full_version > "3.6"` is translated as `@3.6.1:`
-    # `python_full_version > "3.6.1"` is translated as `@3.6.2:`
-
-    # Apparently `in` and `not in` work, and interpret the right hand side as TEXT :sob: not as
-    # list of versions they parse.
+    # TODO: there might be still some bug caused by python_version vs python_full_version
+    # differences.
+    # Also `in` and `not in` are allowed, but difficult to get right. They take the rhs as a
+    # string and do string matching instead of version parsing... so we don't support them now.
     if op not in ("==", ">", ">=", "<", "<=", "!="):
         return None
 
@@ -342,11 +337,58 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
         return None
 
 
+def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
+    # TODO: better epoch support.
+    release = []
+    prerelease = (FINAL,)
+    if v.epoch > 0:
+        release.append(v.epoch)
+    release.extend(v.release)
+    separators = ["."] * (len(release) - 1)
+
+    if v.pre:
+        type, num = v.pre
+        if type == "a":
+            prerelease = (ALPHA, num)
+        elif type == "b":
+            prerelease = (BETA, num)
+        elif type == "rc":
+            prerelease = (RC, num)
+        separators.extend(("-", ""))
+
+        if v.post or v.dev or v.local:
+            print(f"warning: ignoring post / dev / local version {v}", file=sys.stderr)
+
+    else:
+        if v.post:
+            release.extend((VersionStrComponent("post"), v.post))
+            separators.extend((".", ""))
+        if v.dev:
+            release.extend((VersionStrComponent("dev"), v.dev))
+            separators.extend((".", ""))
+        if v.local:
+            release.extend((VersionStrComponent("dev"), v.dev))
+            separators.extend((".", ""))
+
+    separators.append("")
+
+    # Reconstruct a string.
+    string = ""
+    for i in range(len(release)):
+        string += f"{release[i]}{separators[i]}"
+    if v.pre:
+        string += f"{PRERELEASE_TO_STRING[prerelease[0]]}{prerelease[1]}"
+
+    return vn.StandardVersion(string, (tuple(release), tuple(prerelease)), separators)
+
+
 def _condensed_version_list(
     _subset_of_versions: List[pv.Version], _all_versions: List[pv.Version]
 ) -> vn.VersionList:
-    subset = [vn.StandardVersion.from_string(str(v)) for v in _subset_of_versions]
-    all = [vn.StandardVersion.from_string(str(v)) for v in _all_versions]
+    # Sort in Spack's order, which should in principle coincide with packaging's order, but may
+    # not in unforseen edge cases.
+    subset = sorted(_packaging_to_spack_version(v) for v in _subset_of_versions)
+    all = sorted(_packaging_to_spack_version(v) for v in _all_versions)
 
     # Find corresponding index
     i, j = all.index(subset[0]) + 1, 1
@@ -501,7 +543,9 @@ def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.
         ordered_versions=ordered_versions,
     )
 
+
 evalled = dict()
+
 
 def _pkg_specifier_set_to_version_list(
     pkg: str, specifier_set: SpecifierSet, version_lookup: VersionsLookup

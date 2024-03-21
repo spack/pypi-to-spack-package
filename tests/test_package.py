@@ -9,18 +9,21 @@ import package
 
 
 def test_best_lowerbound():
-    assert package._best_lowerbound(SVersion("1.0"), SVersion("2.0")) == SVersion("2")
-    assert package._best_lowerbound(SVersion("1.0"), SVersion("1.1.1")) == SVersion("1.1")
-    assert package._best_lowerbound(SVersion("1.0"), SVersion("1.0.1")) == SVersion("1.0.1")
-    assert package._best_lowerbound(SVersion("1.0a1"), SVersion("1.0")) == SVersion("1.0")
-    assert package._best_lowerbound(SVersion("1.0a1"), SVersion("1.0beta2")) == SVersion(
-        "1.0beta2"
-    )
+    lowerbound = package._best_lowerbound
+    assert lowerbound(SVersion("1.0"), SVersion("2.0")) == SVersion("2")
+    assert lowerbound(SVersion("1.0"), SVersion("1.1.1")) == SVersion("1.1")
+    assert lowerbound(SVersion("1.0"), SVersion("1.0.1")) == SVersion("1.0.1")
+    assert lowerbound(SVersion("1.0alpha1"), SVersion("1.0")) == SVersion("1.0")
+    assert lowerbound(SVersion("1.0alpha1"), SVersion("1.0beta2")) == SVersion("1.0beta2")
+    assert lowerbound(SVersion("4.5.1"), SVersion("4.5.2-beta1")) == SVersion("4.5.2-beta1")
 
 
 def test_best_upperbound():
-    assert package._best_upperbound(SVersion("1.0"), SVersion("2.0")) == SVersion("1")
-    assert package._best_upperbound(SVersion("1.0beta1"), SVersion("1.0")) == SVersion("1.0beta1")
+    upperbound = package._best_upperbound
+    assert upperbound(SVersion("1.0"), SVersion("2.0")) == SVersion("1")
+    assert upperbound(SVersion("1.0beta1"), SVersion("1.0")) == SVersion("1.0beta1")
+    assert upperbound(SVersion("1.0"), SVersion("1.0.1")) == SVersion("1.0.0")
+    assert upperbound(SVersion("1.0beta1"), SVersion("1.0.1")) == SVersion("1.0.0")
 
 
 def _pversions(*versions):

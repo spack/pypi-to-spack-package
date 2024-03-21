@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import argparse
-import bisect
 import gzip
 import io
 import itertools
@@ -322,11 +321,27 @@ def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.S
     m = min(len(curr), len(next))
     while i < m and curr.version[0][i] == next.version[0][i]:
         i += 1
-    return curr if i == m else curr.up_to(i + 1)
+    if i == len(curr) < len(next):
+        release, _ = curr.version
+        release += (0,)  # one zero should be enough 1.2 and 1.2.0 are not distinct in packaging.
+        seperators = (".",) * (len(release) - 1) + ("",)
+        as_str = ".".join(str(x) for x in release)
+        return vn.StandardVersion(as_str, (tuple(release), (FINAL,)), seperators)
+    elif i == m:
+        return curr  # include pre-release of curr
+    else:
+        return curr.up_to(i + 1)
 
 
 def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
-    return _best_upperbound(curr, prev)
+    i = 0
+    m = min(len(curr), len(prev))
+    while i < m and curr.version[0][i] == prev.version[0][i]:
+        i += 1
+    if i + 1 >= len(curr):
+        return curr
+    else:
+        return curr.up_to(i + 1)
 
 
 def _acceptable_version(version: str) -> Optional[pv.Version]:

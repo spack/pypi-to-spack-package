@@ -615,8 +615,9 @@ def _print_package(
 
     for v in reversed(node.ordered_versions):
         sha256, path, sdist = node.version_info[v]
+        spack_v = _packaging_to_spack_version(v)
         print(
-            f'    version("{v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
+            f'    version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
             file=f,
         )
     print(file=f)

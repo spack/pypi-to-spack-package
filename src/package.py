@@ -342,6 +342,7 @@ def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
     release = []
     prerelease = (FINAL,)
     if v.epoch > 0:
+        print(f"warning: epoch {v} isn't really supported", file=sys.stderr)
         release.append(v.epoch)
     release.extend(v.release)
     separators = ["."] * (len(release) - 1)

@@ -1,6 +1,5 @@
 import pytest
 from packaging.markers import Marker
-from packaging.specifiers import Specifier
 from packaging.version import Version as PVersion
 from spack.spec import Spec
 from spack.version import Version as SVersion

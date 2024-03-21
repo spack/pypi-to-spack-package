@@ -351,6 +351,7 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
     except pv.InvalidVersion:
         return None
 
+local_separators = re.compile(r"[\._-]")
 
 def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
     # TODO: better epoch support.
@@ -362,7 +363,7 @@ def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
     release.extend(v.release)
     separators = ["."] * (len(release) - 1)
 
-    if v.pre:
+    if v.pre is not None:
         type, num = v.pre
         if type == "a":
             prerelease = (ALPHA, num)
@@ -376,15 +377,19 @@ def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
             print(f"warning: ignoring post / dev / local version {v}", file=sys.stderr)
 
     else:
-        if v.post:
+        if v.post is not None:
             release.extend((VersionStrComponent("post"), v.post))
             separators.extend((".", ""))
-        if v.dev:
+        if v.dev is not None:  # dev is actually pre-release like, spack makes it a post-release.
             release.extend((VersionStrComponent("dev"), v.dev))
             separators.extend((".", ""))
-        if v.local:
-            release.extend((VersionStrComponent("dev"), v.dev))
-            separators.extend((".", ""))
+        if v.local is not None:
+            local_bits = [
+                int(i) if i.isnumeric() else VersionStrComponent(i) for i in local_separators.split(v.local)
+            ]
+            release.extend(local_bits)
+            separators.append("-")
+            separators.extend("." for _ in range(len(local_bits) - 1))
 
     separators.append("")
 

@@ -30,6 +30,17 @@ def _pversions(*versions):
     return [PVersion(v) for v in versions]
 
 
+def test_translate_version():
+    f = package._packaging_to_spack_version
+
+    assert f(PVersion("1.0")) == SVersion("1.0")
+    assert f(PVersion("1.0a1")) == SVersion("1.0-alpha1")
+    assert f(PVersion("1.0b1")) == SVersion("1.0-beta1")
+    assert f(PVersion("1.0rc1")) == SVersion("1.0-rc1")
+    assert f(PVersion("1.0.dev0")) == SVersion("1.0.dev0")
+    assert f(PVersion("1.0+1.2.3")) == SVersion("1.0-1.2.3")
+
+
 def test_condensed_versions():
     all_versions = _pversions("1.0", "2.0", "3.0", "3.1", "4.0", "5.0")
     condense = package._condensed_version_list

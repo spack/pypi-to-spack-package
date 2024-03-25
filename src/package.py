@@ -5,11 +5,8 @@
 
 import argparse
 import gzip
-import io
-import itertools
 import json
 import os
-import pathlib
 import re
 import shutil
 import sqlite3
@@ -351,7 +348,9 @@ def _acceptable_version(version: str) -> Optional[pv.Version]:
     except pv.InvalidVersion:
         return None
 
+
 local_separators = re.compile(r"[\._-]")
+
 
 def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
     # TODO: better epoch support.
@@ -385,7 +384,8 @@ def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
             separators.extend((".", ""))
         if v.local is not None:
             local_bits = [
-                int(i) if i.isnumeric() else VersionStrComponent(i) for i in local_separators.split(v.local)
+                int(i) if i.isnumeric() else VersionStrComponent(i)
+                for i in local_separators.split(v.local)
             ]
             release.extend(local_bits)
             separators.append("-")
@@ -458,113 +458,6 @@ def simplify_python_constraint(versions: vn.VersionList) -> None:
         vs[0] = union
 
 
-def _populate(name: str, version_lookup: VersionsLookup, sqlite_cursor: sqlite3.Cursor) -> Node:
-    dep_to_when: Dict[DepToWhen, Set[pv.Version]] = defaultdict(set)
-    version_info: Dict[pv.Version, str] = {}
-
-    query = sqlite_cursor.execute(
-        """
-        SELECT version, requires_dist, requires_python, sha256, path, is_sdist
-        FROM versions
-        WHERE name = ?""",
-        (name,),
-    )
-
-    version_to_data = {
-        v: (requires_dist, requires_python, sha256, path, sdist)
-        for version, requires_dist, requires_python, sha256, path, sdist in query
-        if (v := _acceptable_version(version))
-    }
-
-    for version, (
-        requires_dist,
-        requires_python,
-        sha256_blob,
-        path,
-        sdist,
-    ) in version_to_data.items():
-        # Database cannot have duplicate versions.
-        assert version not in version_info
-
-        to_insert = []
-        if requires_python:
-            try:
-                specifier_set = SpecifierSet(requires_python)
-            except InvalidSpecifier:
-                print(
-                    f"{name}@{version}: invalid python specifier {requires_python}",
-                    file=sys.stderr,
-                )
-                continue
-
-            versions = _pkg_specifier_set_to_version_list("python", specifier_set, version_lookup)
-
-            # First delete everything implied by UNSUPPORTED_PYTHON
-            simplify_python_constraint(versions)
-
-            if not versions:
-                print(
-                    f"{name}@{version}: no supported python versions: {requires_python}",
-                    file=sys.stderr,
-                )
-                continue
-            elif versions != vn.any_version:
-                # Only emit non-trivial constraints on python.
-                to_insert.append((("python", versions, None, None, frozenset()), version))
-
-        for requirement_str in json.loads(requires_dist):
-            try:
-                r = Requirement(requirement_str)
-            except InvalidRequirement:
-                print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
-                continue
-
-            child = _normalized_name(r.name)
-
-            if r.marker is not None:
-                result = _evaluate_marker(r.marker, version_lookup)
-                if result is False:  # skip: statically unsatisfiable
-                    continue
-                elif result is True:  # unconditional depends_on
-                    r.marker = None
-                    result = None
-                elif result is not None:  # list of when conditions: conditional depends_on
-                    r.marker = None
-            else:
-                result = None
-
-            # Emit an unconditional depends_on, or one or more conditional depends_on statements.
-            for when in result or [None]:
-                try:
-                    versions = _pkg_specifier_set_to_version_list(
-                        child, r.specifier, version_lookup
-                    )
-                except ValueError:
-                    print(f"{name}@{version}: invalid specifier {r.specifier}", file=sys.stderr)
-                    continue
-                data = (child, versions, when, r.marker, frozenset(r.extras))
-                to_insert.append((data, version))
-
-        # Delay registering a version until we know that it's valid.
-        for k, v in to_insert:
-            dep_to_when[k].add(v)
-        version_info[version] = ("".join(f"{x:02x}" for x in sha256_blob), path, sdist)
-
-    # Next, simplify a list of specific version to a range if they are consecutive.
-    ordered_versions = sorted(version_info.keys())
-
-    # Translate the list of packaging versions to a list of Spack ranges.
-    return Node(
-        name,
-        dep_to_when={
-            k: _condensed_version_list(sorted(dep_to_when[k]), ordered_versions)
-            for k in dep_to_when
-        },
-        version_info=version_info,
-        ordered_versions=ordered_versions,
-    )
-
-
 evalled = dict()
 
 
@@ -579,14 +472,6 @@ def _pkg_specifier_set_to_version_list(
     result = vn.VersionList() if not matching else _condensed_version_list(matching, all)
     evalled[key] = result
     return result
-
-
-def _make_depends_on_spec(name: str, version_list: vn.VersionList, extras: FrozenSet[str]) -> Spec:
-    pkg_name = "python" if name == "python" else f"{SPACK_PREFIX}{name}"
-    extras_variants = "".join(f"+{v}" for v in sorted(extras))
-    spec = Spec(f"{pkg_name} {extras_variants}")
-    spec.versions = version_list
-    return spec
 
 
 def _make_when_spec(spec: Optional[Spec], when_versions: vn.VersionList) -> Spec:
@@ -604,186 +489,6 @@ def _format_when_spec(spec: Spec) -> str:
     return " ".join(p for p in parts if p)
 
 
-def _print_package(
-    node: Node, defined_variants: Dict[str, Set[str]], f: io.StringIO = sys.stdout
-) -> None:
-    if not node.version_info:
-        print("    # No versions available", file=f)
-        print("    pass", file=f)
-        print(file=f)
-        return
-
-    for v in reversed(node.ordered_versions):
-        sha256, path, sdist = node.version_info[v]
-        spack_v = _packaging_to_spack_version(v)
-        print(
-            f'    version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
-            file=f,
-        )
-    print(file=f)
-
-    for variant in sorted(defined_variants.get(node.name, ())):
-        print(f'    variant("{variant}", default=False)', file=f)
-    print(file=f)
-
-    # Then the depends_on bits.
-    uncommented_lines: List[str] = []
-    commented_lines: List[Tuple[str, str]] = []
-
-    children = [
-        (
-            _make_depends_on_spec(name, version_list, extras),
-            _make_when_spec(when_spec, when_versions),
-            name,
-            marker,
-            extras,
-        )
-        for (
-            name,
-            version_list,
-            when_spec,
-            marker,
-            extras,
-        ), when_versions in node.dep_to_when.items()
-    ]
-
-    # Order by (python / not python, name ASC, when spec DESC, spec DESC)
-    children.sort(key=lambda x: (x[0]), reverse=True)
-    children.sort(key=lambda x: (x[1]), reverse=True)
-    children.sort(key=lambda x: (x[0].name != "python", x[0].name))
-
-    for child_spec, when_spec, name, marker, extras in children:
-
-        if marker is not None:
-            comment = f"marker: {marker}"
-        else:
-            comment = False
-
-        if name == node.name:
-            # TODO: could turn this into a requirement: requires("+x", when="@y")
-            comment = "self-dependency"
-
-        # Comment out a depends_on statement if the variants do not exist, or if there are
-        # markers that we could not evaluate.
-        if comment is False and defined_variants and name != "python":
-            if (
-                when_spec
-                and when_spec.variants
-                and not all(v in defined_variants[node.name] for v in when_spec.variants)
-            ):
-                comment = "variants statically unused"
-            elif name not in defined_variants or not extras.issubset(defined_variants[name]):
-                comment = "variants statically unused"
-
-        when_str = _format_when_spec(when_spec)
-        if when_str:
-            line = f'depends_on("{child_spec}", when="{when_str}")'
-        else:
-            line = f'depends_on("{child_spec}")'
-        if comment:
-            commented_lines.append((line, comment))
-        else:
-            uncommented_lines.append(line)
-
-    if uncommented_lines:
-        print('    with default_args(type="run"):', file=f)
-    elif commented_lines:
-        print('    # with default_args(type="run"):', file=f)
-
-    for line in uncommented_lines:
-        print(f"        {line}", file=f)
-
-    # Group commented lines by comment
-    commented_lines.sort(key=lambda x: x[1])
-    for comment, group in itertools.groupby(commented_lines, key=lambda x: x[1]):
-        print(f"\n        # {comment}", file=f)
-        for line, _ in group:
-            print(f"        # {line}", file=f)
-
-    print(file=f)
-
-
-def _generate(pkg_name: str, extras: List[str], directory: Optional[str]) -> None:
-    # Maps package name to (Node, seen_variants) tuples. The set of variants is those
-    # variants that can possibly be turned on. It's intended to list a subset of the
-    # variants defined by the package, as a means to omit variants like +test, +dev, and
-    # +doc etc (or whatever the package author decided to call them) that are not required
-    # by any of its dependents.
-    packages: Dict[str, Tuple[Node, Set[str]]] = {}
-    version_lookup = VersionsLookup(sqlite_cursor)
-
-    # Queue is a list of (package, with_variants, depth) tuples. The set of variants is
-    # those that its dependent required (or required from the command line for the root).
-    queue: List[Tuple[str, Set[str], int]] = [(pkg_name, {*args.extras}, 0)]
-    i = 1
-    while queue:
-        name, with_variants, depth = queue.pop()
-
-        entry = packages.get(name)
-        seen_before = entry is not None
-
-        # Drop if we've already seen this package with the same variants enabled.
-        if entry and with_variants.issubset(entry[1]):
-            continue
-        print(f"{i:4d}: {' ' * depth}{name}", file=sys.stderr)
-
-        if seen_before:
-            node, seen_variants = entry
-            seen_variants.update(with_variants)
-        else:
-            node = _populate(name, version_lookup, sqlite_cursor)
-            seen_variants = set(with_variants)
-            packages[name] = (node, seen_variants)
-
-        # If we have not seen this package before, we follow the unconditional edges
-        # (i.e. those with a when clause that does not require any variants) and the
-        # conditional ones that are enabled by the required variants.
-        for child_name, _, when_spec, _, extras in node.dep_to_when.keys():
-            if child_name == "python":
-                continue
-            if (
-                not seen_before
-                and (
-                    # unconditional edges and conditional edges of all required
-                    when_spec is None
-                    or not when_spec.variants
-                    or all(variant in seen_variants for variant in when_spec.variants)
-                )
-                or (
-                    # conditional edges with new variants only
-                    seen_before
-                    and when_spec is not None
-                    and when_spec.variants
-                    and all(variant in seen_variants for variant in when_spec.variants)
-                )
-            ):
-                queue.append((child_name, extras, depth + 1))
-
-        i += 1
-
-    # Simplify to a map from package name to a set of variants that are effectively used.
-    defined_variants = {name: variants for name, (_, variants) in packages.items()}
-
-    output_dir = pathlib.Path(directory or "pypi")
-    packages_dir = output_dir / "packages"
-
-    if not output_dir.exists():
-        packages_dir.mkdir(parents=True)
-
-    if not (output_dir / "repo.yaml").exists():
-        with open(output_dir / "repo.yaml", "w") as f:
-            f.write("repo:\n  namespace: python\n")
-
-    for name, (node, _) in packages.items():
-        spack_name = f"{SPACK_PREFIX}{name}"
-        package_dir = packages_dir / spack_name
-        package_dir.mkdir(parents=True, exist_ok=True)
-        with open(package_dir / "package.py", "w") as f:
-            print("from spack.package import *\n\n", file=f)
-            print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
-            _print_package(node, defined_variants, f)
-
-
 def download_db():
     print("Downloading latest database (~500MB, may take a while...)", file=sys.stderr)
     with urllib.request.urlopen(DB_URL) as response, open("data.db", "wb") as f:
@@ -791,18 +496,153 @@ def download_db():
             shutil.copyfileobj(gz, f)
 
 
-if __name__ == "__main__":
+MAX_VERSIONS = 10
+
+
+def _get_node(
+    name: str,
+    specifier: SpecifierSet,
+    extras: FrozenSet[str],
+    sqlite_cursor: sqlite3.Cursor,
+    version_lookup: VersionsLookup,
+):
+    name = _normalized_name(name)
+    query = sqlite_cursor.execute(
+        """
+        SELECT version, requires_dist, requires_python, sha256, path, is_sdist
+        FROM versions
+        WHERE name = ?""",
+        (name,),
+    )
+
+    data = [
+        (v, requires_dist, requires_python, sha256, path, sdist)
+        for version, requires_dist, requires_python, sha256, path, sdist in query
+        if (v := _acceptable_version(version))
+    ]
+
+    # prioritize final versions
+    data.sort(key=lambda x: (not x[0].is_prerelease, x[0]), reverse=True)
+
+    requirement_to_when: Dict[
+        Tuple[str, SpecifierSet, FrozenSet[str]],
+        List[Tuple[pv.Version, Optional[Marker], Optional[Spec]]],
+    ] = defaultdict(list)
+
+    # Generate a dictionary of requirement -> versions.
+    count = 0
+    used_versions: Set[Tuple[pv.Version, str, str]] = set()
+    python_constraints: Dict[vn.VersionList, Set[pv.Version]] = defaultdict(set)
+
+    for version, requires_dist, requires_python, sha256_blob, path, sdist in data:
+        if not specifier.contains(version, prereleases=True):
+            continue
+
+        count += 1
+        if count > MAX_VERSIONS:
+            break
+
+        if requires_python:
+            try:
+                specifier_set = SpecifierSet(requires_python)
+            except InvalidSpecifier:
+                print(
+                    f"{name}@{version}: invalid python specifier {requires_python}",
+                    file=sys.stderr,
+                )
+                continue
+
+            python_versions = _pkg_specifier_set_to_version_list(
+                "python", specifier_set, version_lookup
+            )
+
+            # Delete everything implied by UNSUPPORTED_PYTHON
+            simplify_python_constraint(python_versions)
+
+            if not python_versions:
+                print(
+                    f"{name}@{version}: no supported python versions: {requires_python}",
+                    file=sys.stderr,
+                )
+                continue
+        else:
+            python_versions = vn.any_version
+
+        # go over the edges
+        valid = True
+        for requirement_str in json.loads(requires_dist):
+            try:
+                r = Requirement(requirement_str)
+            except InvalidRequirement:
+                print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
+                valid = False
+                break
+
+            if r.marker is not None:
+                evalled = _evaluate_marker(r.marker, version_lookup)
+
+                # If statically false, or if we don't have any of the required variants, skip.
+                if (
+                    evalled is False
+                    or isinstance(evalled, list)
+                    and not any(all(v in extras for v in spec.variants) for spec in evalled)
+                ):
+                    continue
+
+                if evalled is True:
+                    r.marker = None
+                    evalled = None
+
+                elif evalled is not None:
+                    r.marker = None
+            else:
+                evalled = None
+
+            requirement_to_when[
+                (_normalized_name(r.name), r.specifier, frozenset(r.extras))
+            ].append((version, r.marker, evalled))
+
+        # Drop versions that have invalid requirements.
+        if not valid:
+            continue
+
+        sha256 = "".join(f"{x:02x}" for x in sha256_blob)
+        used_versions.add((version, sha256, path))
+
+        if python_versions != vn.any_version:
+            python_constraints[python_versions].add(version)
+
+    return used_versions, requirement_to_when, python_constraints
+
+
+class MyNode:
+    versions: Set[Tuple[pv.Version, str, str]]
+    edges: Dict[
+        Tuple[str, SpecifierSet, FrozenSet[str]],
+        List[Tuple[pv.Version, Optional[Marker], Optional[Spec]]],
+    ]
+    variants: Set[str]
+
+    # maps unique python constraints to versions that impose them
+    pythons: Dict[vn.VersionList, Set[pv.Version]]
+
+    def __init__(self) -> None:
+        self.versions = set()
+        self.edges = {}
+        self.variants = set()
+        self.pythons = defaultdict(set)
+
+
+def main():
+
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
     parser.add_argument("--db", default="data.db", help="The database file to read from")
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
-    p_generate = subparsers.add_parser("generate", help="Generate a package.py file")
-    p_generate.add_argument("--directory", "-o", help="Output directory")
-    p_generate.add_argument("package", help="The package name on PyPI")
-    p_generate.add_argument(
-        "extras", nargs="*", help="Extras / variants to define on given package"
-    )
+    p_new_generate = subparsers.add_parser("generate", help="Generate a package.py file")
+    p_new_generate.add_argument("--directory", "-o", help="Output directory")
+    p_new_generate.add_argument("requirements", help="requirements.txt file")
     p_info = subparsers.add_parser("info", help="Show basic info about database or package")
     p_info.add_argument("package", nargs="?", help="package name on PyPI")
     p_update = subparsers.add_parser("update", help="Download the latest database")
@@ -823,16 +663,7 @@ if __name__ == "__main__":
 
     if args.command == "info":
         if args.package:
-            node = _populate(_normalized_name(args.package), sqlite_cursor)
-            variants = set(
-                variant
-                for _, _, when_spec, _, _ in node.dep_to_when.keys()
-                if when_spec
-                for variant in when_spec.variants
-            )
-            print("Normalized name:", node.name)
-            print("Variants:", " ".join(sorted(variants)) if variants else "none")
-            print("Total versions:", len(node.version_to_shasum))
+            raise Exception("todo")
         else:
             print(
                 "Total packages:",
@@ -844,4 +675,118 @@ if __name__ == "__main__":
             )
 
     elif args.command == "generate":
-        _generate(_normalized_name(args.package), args.extras, args.directory)
+        # Parse requirements.txt
+        with open(args.requirements) as f:
+            requirements = [
+                Requirement(v) for line in f.readlines() if (v := line.split("#")[0].strip())
+            ]
+
+        queue = [
+            (_normalized_name(r.name), r.specifier, frozenset(r.extras), 0) for r in requirements
+        ]
+
+        # map from package name to set of versions
+        visited = set()
+        lookup = VersionsLookup(sqlite_cursor)
+        graph = defaultdict(MyNode)
+
+        # explore the graph
+        while queue:
+            name, specifier, extras, depth = queue.pop()
+            print(f"{' ' * depth}{name} {specifier}", file=sys.stderr)
+            versions, edges, python_constraints = _get_node(
+                name, specifier, extras, sqlite_cursor, lookup
+            )
+            node = graph[name]
+            node.versions.update(versions)
+            node.variants.update(extras)
+            for python_constraints, versions in python_constraints.items():
+                node.pythons[python_constraints].update(versions)
+            for key in edges:
+                node.edges[key] = edges[key]
+                if key in visited:
+                    continue
+                visited.add(key)
+                queue.append((*key, depth + 1))
+
+        # dump the graph as spack package
+        for name, node in sorted(graph.items(), key=lambda x: x[0]):
+            print(name)
+            for version, sha256, path in sorted(node.versions, reverse=True):
+                spack_v = _packaging_to_spack_version(version)
+                print(
+                    f'  version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")'
+                )
+            print()
+            for variant in sorted(node.variants):
+                print(f'  variant("{variant}", default=False)')
+            if node.variants:
+                print()
+
+            # Condense edges to (depends on spec, marker condition) -> versions
+            dep_to_when = defaultdict(set)
+
+            for (child, specifier, extras), data in node.edges.items():
+                child_versions = [v for v, _, _ in graph[child].versions]
+                variants = "".join(f"+{v}" for v in extras)
+                spec = Spec(f"py-{child}{variants}")
+                try:
+                    spec.versions = _condensed_version_list(
+                        [v for v in child_versions if specifier.contains(v, prereleases=True)],
+                        child_versions,
+                    )
+                except IndexError:
+                    spec.versions = vn.VersionList([":"])
+
+                for version, marker, marker_specs in sorted(
+                    data, key=lambda x: x[0], reverse=True
+                ):
+                    if isinstance(marker_specs, list):
+                        for marker_spec in marker_specs:
+                            dep_to_when[(spec, marker, marker_spec)].add(version)
+                    else:
+                        dep_to_when[(spec, marker, None)].add(version)
+
+            unique_versions = [v for v, _, _ in node.versions]
+
+            # First dump Python constraints.
+            for python_constraints, versions in node.pythons.items():
+                when_spec = Spec()
+                when_spec.versions = _condensed_version_list(versions, unique_versions)
+                depends_on = Spec("python")
+                depends_on.versions = python_constraints
+                print(f' depends_on("{depends_on}", when="{when_spec}")')
+            print()
+
+            # Then show further dependencies.
+
+            children = [
+                (
+                    spec,
+                    _make_when_spec(
+                        marker_spec, _condensed_version_list(versions, unique_versions)
+                    ),
+                    marker,
+                )
+                for (spec, marker, marker_spec), versions in dep_to_when.items()
+            ]
+
+            # Order by (name ASC, when spec DESC, spec DESC)
+            children.sort(key=lambda x: (x[0]), reverse=True)
+            children.sort(key=lambda x: (x[1]), reverse=True)
+            children.sort(key=lambda x: (x[0].name))
+
+            for spec, when_spec, marker in children:
+                when_spec_str = _format_when_spec(when_spec)
+                if when_spec_str:
+                    depends_on = f'  depends_on("{spec}", when="{when_spec_str}")'
+                else:
+                    depends_on = f'  depends_on("{spec}")'
+                if marker is not None:
+                    depends_on += f" # {marker}"
+                print(depends_on)
+            print()
+
+
+if __name__ == "__main__":
+    main()

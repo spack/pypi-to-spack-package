@@ -1,0 +1,2 @@
+black[colorama,d,jupyter,uvloop] > 3 # lol
+azure-cli

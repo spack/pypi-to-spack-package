@@ -1,7 +1,7 @@
 # PyPI to [Spack](https://www.github.com/spack/spack) `package.py`
 
 > [!WARNING]
-> This is current going through a rewrite, so readme may not apply.
+> This is currently going through a rewrite, so readme may not apply.
 
 
 ## Usage

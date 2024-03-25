@@ -1,6 +1,8 @@
 # PyPI to [Spack](https://www.github.com/spack/spack) `package.py`
 
-Note: this is work in progress.
+> [!WARNING]
+> This is current going through a rewrite, so readme may not apply.
+
 
 ## Usage
 

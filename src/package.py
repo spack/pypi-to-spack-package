@@ -483,7 +483,17 @@ def download_db():
             shutil.copyfileobj(gz, f)
 
 
-MAX_VERSIONS = 10
+def _parse_requirements(
+    name: str, version: pv.Version, requires_dist: str
+) -> Optional[List[Requirement]]:
+    requirements: List[Requirement] = []
+    for requirement_str in json.loads(requires_dist):
+        try:
+            requirements.append(Requirement(requirement_str))
+        except InvalidRequirement:
+            print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
+            return None
+    return requirements
 
 
 def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: VersionsLookup):
@@ -548,15 +558,13 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
             python_versions = vn.any_version
 
         # go over the edges
-        valid = True
-        for requirement_str in json.loads(requires_dist):
-            try:
-                r = Requirement(requirement_str)
-            except InvalidRequirement:
-                print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
-                valid = False
-                break
+        requirements = _parse_requirements(name, version, requires_dist)
 
+        # Invalid requirements, skip this version.
+        if requirements is None:
+            continue
+
+        for r in requirements:
             if r.marker is not None:
                 evalled = _evaluate_marker(r.marker, version_lookup)
 
@@ -576,10 +584,6 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
             requirement_to_when[
                 (_normalized_name(r.name), r.specifier, frozenset(r.extras))
             ].append((version, r.marker, evalled))
-
-        # Drop versions that have invalid requirements.
-        if not valid:
-            continue
 
         sha256 = "".join(f"{x:02x}" for x in sha256_blob)
         version_data[version] = (sha256, path)
@@ -634,7 +638,7 @@ def _generate(
 
     while queue:
         name, specifier, extras, depth = queue.pop()
-        print(f"{' ' * depth}{name} {specifier} {len(queue)}", file=sys.stderr)
+        print(f"{' ' * depth}{name} {specifier} [queue = #{len(queue)}]", file=sys.stderr)
         # Populate package info if we haven't seen it yet.
         if name not in graph:
             node = Node()
@@ -701,16 +705,20 @@ def _generate(
                     dep_to_when[(spec, marker, None)].add(version)
 
         # Finally create an list of edges in the format and order we can use in package.py
-        node.children = [
-            (
-                spec,
-                _make_when_spec(
-                    marker_spec, _condensed_version_list(versions, node.versions.keys())
-                ),
-                marker,
-            )
-            for (spec, marker, marker_spec), versions in dep_to_when.items()
-        ]
+        for (spec, marker, marker_spec), versions in dep_to_when.items():
+            try:
+                node.children.append(
+                    (
+                        spec,
+                        _make_when_spec(
+                            marker_spec, _condensed_version_list(versions, node.versions.keys())
+                        ),
+                        marker,
+                    )
+                )
+            except ValueError:
+                print(name, versions, list(node.versions.keys()), file=sys.stderr)
+                raise
 
         # Order by (name ASC, when spec DESC, spec DESC)
         node.children.sort(key=lambda x: (x[0]), reverse=True)
@@ -788,9 +796,8 @@ def main():
     p_new_generate = subparsers.add_parser("generate", help="Generate a package.py file")
     p_new_generate.add_argument("--directory", "-o", help="Output directory")
     p_new_generate.add_argument("requirements", help="requirements.txt file")
-    p_info = subparsers.add_parser("info", help="Show basic info about database or package")
-    p_info.add_argument("package", nargs="?", help="package name on PyPI")
-    p_update = subparsers.add_parser("update", help="Download the latest database")
+    subparsers.add_parser("info", help="Show basic info about database or package")
+    subparsers.add_parser("update", help="Download the latest database")
 
     args = parser.parse_args()
 
@@ -807,17 +814,13 @@ def main():
     sqlite_cursor = sqlite_connection.cursor()
 
     if args.command == "info":
-        if args.package:
-            raise Exception("todo")
-        else:
-            print(
-                "Total packages:",
-                sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0],
-            )
-            print(
-                "Total versions:",
-                sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0],
-            )
+        print(
+            "Total packages:",
+            sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0],
+        )
+        print(
+            "Total versions:", sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0]
+        )
 
     elif args.command == "generate":
         # Parse requirements.txt

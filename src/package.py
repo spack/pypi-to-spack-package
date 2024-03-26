@@ -55,6 +55,17 @@ KNOWN_PYTHON_VERSIONS = (
     (3, 13, 0),
 )
 
+HEADER = """\
+##############################################################################
+# Copyright 2013-2024 Lawrence Livermore National Security, LLC and other
+# Spack Project Developers. See the top-level COPYRIGHT file for details.
+#
+# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+
+from spack.package import *
+
+"""
+
 
 class VersionsLookup:
     def __init__(self, cursor: sqlite3.Cursor):
@@ -737,6 +748,10 @@ def _generate(
 
 
 def _print_package(name: str, node: Node, f: io.StringIO):
+    if not node.used_versions:
+        print("    # No versions available.", file=f)
+        print("    pass", file=f)
+        return
     for version in sorted(node.used_versions, reverse=True):
         sha256, path = node.versions[version]
         spack_v = _packaging_to_spack_version(version)
@@ -850,7 +865,7 @@ def main():
             package_dir = packages_dir / spack_name
             package_dir.mkdir(parents=True, exist_ok=True)
             with open(package_dir / "package.py", "w") as f:
-                print("from spack.package import *\n\n", file=f)
+                f.write(HEADER)
                 print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
                 _print_package(name, node, f)
 

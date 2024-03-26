@@ -1,3 +1,6 @@
-black[colorama, d, jupyter, uvloop]
+black[colorama, jupyter, uvloop]
 azure-cli
 awscli
+isort
+mypy
+flake8

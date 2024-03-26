@@ -707,6 +707,12 @@ def _generate(
             spec = Spec(f"{SPACK_PREFIX}{child}{variants}")
             spec.versions = _pkg_specifier_set_to_version_list(child, specifier, lookup)
 
+            # Sometimes a package is missing versions because it is no-source and binary wheel
+            # only. I guess we may need to do a request then to figure out versions? It's rare.
+            if not spec.versions:
+                print(f"{name} -> {child} {specifier} has no matching versions", file=sys.stderr)
+                spec.versions = vn.any_version
+
             for version, marker, marker_specs in data:
                 if isinstance(marker_specs, list):
                     for marker_spec in marker_specs:
@@ -714,21 +720,22 @@ def _generate(
                 else:
                     dep_to_when[(spec, marker, None)].add(version)
 
+        for key in list(dep_to_when.keys()):
+            marker_spec = key[2]
+            if marker_spec and not node.variants.issuperset(marker_spec.variants):
+                del dep_to_when[key]
+
         # Finally create an list of edges in the format and order we can use in package.py
         for (spec, marker, marker_spec), versions in dep_to_when.items():
-            try:
-                node.children.append(
-                    (
-                        spec,
-                        _make_when_spec(
-                            marker_spec, _condensed_version_list(versions, node.versions.keys())
-                        ),
-                        marker,
-                    )
+            node.children.append(
+                (
+                    spec,
+                    _make_when_spec(
+                        marker_spec, _condensed_version_list(versions, node.versions.keys())
+                    ),
+                    marker,
                 )
-            except ValueError:
-                print(name, versions, list(node.versions.keys()), file=sys.stderr)
-                raise
+            )
 
         # Order by (name ASC, when spec DESC, spec DESC)
         node.children.sort(key=lambda x: (x[0]), reverse=True)
@@ -776,7 +783,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
 
         if marker is not None:
             commented_lines.append((depends_on, f"marker: {marker}"))
-        elif spec.name == name:
+        elif spec.name == f"{SPACK_PREFIX}{name}":
             # TODO: could turn this into a requirement: requires("+x", when="@y")
             commented_lines.append((depends_on, "self-dependency"))
         else:

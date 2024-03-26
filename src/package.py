@@ -51,24 +51,6 @@ KNOWN_PYTHON_VERSIONS = (
     (3, 13, 0),
 )
 
-DepToWhen = Tuple[str, vn.VersionList, Optional[Spec], Optional[Marker], FrozenSet[str]]
-
-
-class Node:
-    __slots__ = ("name", "dep_to_when", "version_info", "ordered_versions")
-
-    def __init__(
-        self,
-        name: str,
-        dep_to_when: Dict[DepToWhen, vn.VersionList],
-        version_info: Dict[pv.Version, str],
-        ordered_versions: List[pv.Version],
-    ):
-        self.name = name
-        self.dep_to_when = dep_to_when
-        self.version_info = version_info
-        self.ordered_versions = ordered_versions
-
 
 class VersionsLookup:
     def __init__(self, cursor: sqlite3.Cursor):
@@ -531,7 +513,7 @@ def _get_node(
 
     # Generate a dictionary of requirement -> versions.
     count = 0
-    used_versions: Set[Tuple[pv.Version, str, str]] = set()
+    used_versions: Dict[pv.Version, Tuple[str, str]] = {}
     python_constraints: Dict[vn.VersionList, Set[pv.Version]] = defaultdict(set)
 
     for version, requires_dist, requires_python, sha256_blob, path, sdist in data:
@@ -607,7 +589,7 @@ def _get_node(
             continue
 
         sha256 = "".join(f"{x:02x}" for x in sha256_blob)
-        used_versions.add((version, sha256, path))
+        used_versions[version] = (sha256, path)
 
         if python_versions != vn.any_version:
             python_constraints[python_versions].add(version)
@@ -615,22 +597,113 @@ def _get_node(
     return used_versions, requirement_to_when, python_constraints
 
 
-class MyNode:
-    versions: Set[Tuple[pv.Version, str, str]]
+class Node:
+    #: Versions of this package. Typicaly a subset of all known versions. Keys are versions, values
+    #: are (sha256, path) tuples.
+    versions: Dict[pv.Version, Tuple[str, str]]
+
+    #: Edges to dependencies, keyed by (name, specifier, extras), with values being a list of
+    #: (version, marker, when) tuples.
     edges: Dict[
         Tuple[str, SpecifierSet, FrozenSet[str]],
         List[Tuple[pv.Version, Optional[Marker], Optional[Spec]]],
     ]
+
+    #: Set of all variants of this package, needed by a dependent.
     variants: Set[str]
 
-    # maps unique python constraints to versions that impose them
+    #: Dependencies on Python versions. Key is a list of Python versions, value the set of versions
+    #: of the package that depend on them.
     pythons: Dict[vn.VersionList, Set[pv.Version]]
 
+    #: This is a simplified version of edges, for the purpose of generating the package.py file.
+    #: It is an ordered list of (dependency_spec, when_spec, marker) tuples. The marker is only
+    #: present if we cannot translate it into a when spec.
+    children: List[Tuple[Spec, Spec, Optional[Marker]]]
+
     def __init__(self) -> None:
-        self.versions = set()
+        self.versions = {}
         self.edges = {}
         self.variants = set()
         self.pythons = defaultdict(set)
+        self.children = []
+
+
+def _generate(
+    queue: List[Tuple[str, SpecifierSet, FrozenSet[str], int]], sqlite_cursor: sqlite3.Cursor
+):
+    visited = set()
+    lookup = VersionsLookup(sqlite_cursor)
+    graph = defaultdict(Node)
+
+    # Traverse edges
+    while queue:
+        name, specifier, extras, depth = queue.pop()
+        print(f"{' ' * depth}{name} {specifier}", file=sys.stderr)
+        versions, edges, python_constraints = _get_node(
+            name, specifier, extras, sqlite_cursor, lookup
+        )
+        node = graph[name]
+        node.versions.update(versions)
+        node.variants.update(extras)
+        for python_constraints, versions in python_constraints.items():
+            node.pythons[python_constraints].update(versions)
+        for key in edges:
+            node.edges[key] = edges[key]
+            if key in visited:
+                continue
+            visited.add(key)
+            queue.append((*key, depth + 1))
+
+    # Condense edges to (depends on spec, marker condition) -> versions
+    for name, node in graph.items():
+        dep_to_when = defaultdict(set)
+        for (child, specifier, extras), data in node.edges.items():
+            child_versions = graph[child].versions.keys()
+            variants = "".join(f"+{v}" for v in extras)
+            spec = Spec(f"py-{child}{variants}")
+            try:
+                spec.versions = _condensed_version_list(
+                    [v for v in child_versions if specifier.contains(v, prereleases=True)],
+                    child_versions,
+                )
+            except IndexError:
+                # This happens if a package does not define any versions (todo, improve).
+                spec.versions = vn.VersionList([":"])
+
+            for version, marker, marker_specs in data:
+                if isinstance(marker_specs, list):
+                    for marker_spec in marker_specs:
+                        dep_to_when[(spec, marker, marker_spec)].add(version)
+                else:
+                    dep_to_when[(spec, marker, None)].add(version)
+
+        # Finally create an list of edges in the format and order we can use in package.py
+        node.children = [
+            (
+                spec,
+                _make_when_spec(
+                    marker_spec, _condensed_version_list(versions, node.versions.keys())
+                ),
+                marker,
+            )
+            for (spec, marker, marker_spec), versions in dep_to_when.items()
+        ]
+
+        # Order by (name ASC, when spec DESC, spec DESC)
+        node.children.sort(key=lambda x: (x[0]), reverse=True)
+        node.children.sort(key=lambda x: (x[1]), reverse=True)
+        node.children.sort(key=lambda x: (x[0].name))
+
+        # Prepend dependencies on Python versions.
+        for python_constraints, versions in sorted(node.pythons.items(), key=lambda x: x[0]):
+            when_spec = Spec()
+            when_spec.versions = _condensed_version_list(versions, node.versions.keys())
+            depends_on = Spec("python")
+            depends_on.versions = python_constraints
+            node.children.insert(0, (depends_on, when_spec, None))
+
+    return graph
 
 
 def main():
@@ -685,34 +758,13 @@ def main():
             (_normalized_name(r.name), r.specifier, frozenset(r.extras), 0) for r in requirements
         ]
 
-        # map from package name to set of versions
-        visited = set()
-        lookup = VersionsLookup(sqlite_cursor)
-        graph = defaultdict(MyNode)
-
-        # explore the graph
-        while queue:
-            name, specifier, extras, depth = queue.pop()
-            print(f"{' ' * depth}{name} {specifier}", file=sys.stderr)
-            versions, edges, python_constraints = _get_node(
-                name, specifier, extras, sqlite_cursor, lookup
-            )
-            node = graph[name]
-            node.versions.update(versions)
-            node.variants.update(extras)
-            for python_constraints, versions in python_constraints.items():
-                node.pythons[python_constraints].update(versions)
-            for key in edges:
-                node.edges[key] = edges[key]
-                if key in visited:
-                    continue
-                visited.add(key)
-                queue.append((*key, depth + 1))
+        graph = _generate(queue, sqlite_cursor)
 
         # dump the graph as spack package
         for name, node in sorted(graph.items(), key=lambda x: x[0]):
             print(name)
-            for version, sha256, path in sorted(node.versions, reverse=True):
+            for version in sorted(node.versions, reverse=True):
+                sha256, path = node.versions[version]
                 spack_v = _packaging_to_spack_version(version)
                 print(
                     f'  version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")'
@@ -723,60 +775,7 @@ def main():
             if node.variants:
                 print()
 
-            # Condense edges to (depends on spec, marker condition) -> versions
-            dep_to_when = defaultdict(set)
-
-            for (child, specifier, extras), data in node.edges.items():
-                child_versions = [v for v, _, _ in graph[child].versions]
-                variants = "".join(f"+{v}" for v in extras)
-                spec = Spec(f"py-{child}{variants}")
-                try:
-                    spec.versions = _condensed_version_list(
-                        [v for v in child_versions if specifier.contains(v, prereleases=True)],
-                        child_versions,
-                    )
-                except IndexError:
-                    spec.versions = vn.VersionList([":"])
-
-                for version, marker, marker_specs in sorted(
-                    data, key=lambda x: x[0], reverse=True
-                ):
-                    if isinstance(marker_specs, list):
-                        for marker_spec in marker_specs:
-                            dep_to_when[(spec, marker, marker_spec)].add(version)
-                    else:
-                        dep_to_when[(spec, marker, None)].add(version)
-
-            unique_versions = [v for v, _, _ in node.versions]
-
-            # First dump Python constraints.
-            for python_constraints, versions in node.pythons.items():
-                when_spec = Spec()
-                when_spec.versions = _condensed_version_list(versions, unique_versions)
-                depends_on = Spec("python")
-                depends_on.versions = python_constraints
-                print(f' depends_on("{depends_on}", when="{when_spec}")')
-            print()
-
-            # Then show further dependencies.
-
-            children = [
-                (
-                    spec,
-                    _make_when_spec(
-                        marker_spec, _condensed_version_list(versions, unique_versions)
-                    ),
-                    marker,
-                )
-                for (spec, marker, marker_spec), versions in dep_to_when.items()
-            ]
-
-            # Order by (name ASC, when spec DESC, spec DESC)
-            children.sort(key=lambda x: (x[0]), reverse=True)
-            children.sort(key=lambda x: (x[1]), reverse=True)
-            children.sort(key=lambda x: (x[0].name))
-
-            for spec, when_spec, marker in children:
+            for spec, when_spec, marker in node.children:
                 when_spec_str = _format_when_spec(when_spec)
                 if when_spec_str:
                     depends_on = f'  depends_on("{spec}", when="{when_spec_str}")'

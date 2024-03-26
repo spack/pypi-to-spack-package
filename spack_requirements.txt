@@ -1,4 +1,4 @@
-black[colorama, jupyter, uvloop]
+black[colorama, d, jupyter, uvloop]
 azure-cli
 awscli
 isort

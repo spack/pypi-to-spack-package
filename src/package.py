@@ -510,15 +510,15 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
     name = _normalized_name(name)
     query = sqlite_cursor.execute(
         """
-        SELECT version, requires_dist, requires_python, sha256, path, is_sdist
+        SELECT version, requires_dist, requires_python, sha256, path
         FROM versions
         WHERE name = ?""",
         (name,),
     )
 
     data = [
-        (v, requires_dist, requires_python, sha256, path, sdist)
-        for version, requires_dist, requires_python, sha256, path, sdist in query
+        (v, requires_dist, requires_python, sha256, path)
+        for version, requires_dist, requires_python, sha256, path in query
         if (v := _acceptable_version(version))
     ]
 
@@ -531,7 +531,7 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
     version_data: Dict[pv.Version, Tuple[str, str]] = {}
     python_constraints: Dict[vn.VersionList, Set[pv.Version]] = defaultdict(set)
 
-    for version, requires_dist, requires_python, sha256_blob, path, sdist in data:
+    for version, requires_dist, requires_python, sha256_blob, path in data:
         # Sometimes 1.54.0 and 1.54 are both in the database.
         if version in version_data:
             copy = next(v for v in version_data if v == version)

@@ -1,2 +1,3 @@
-black[colorama,d,jupyter,uvloop] > 3 # lol
+black[colorama]
 azure-cli
+awscli

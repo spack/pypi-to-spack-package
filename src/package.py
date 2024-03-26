@@ -5,12 +5,16 @@
 
 import argparse
 import gzip
+import io
+import itertools
 import json
 import os
+import pathlib
 import re
 import shutil
 import sqlite3
 import sys
+import time
 import urllib.request
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
@@ -58,6 +62,7 @@ class VersionsLookup:
         self.cache: Dict[str, List[pv.Version]] = {}
 
     def _query(self, name: str) -> List[pv.Version]:
+        # Todo, de-duplicate identical versions e.g. "3.7.0" and "3.7".
         query = self.cursor.execute("SELECT version FROM versions WHERE name = ?", (name,))
         return sorted(vv for v, in query if (vv := _acceptable_version(v)))
 
@@ -450,7 +455,7 @@ def _pkg_specifier_set_to_version_list(
     if key in evalled:
         return evalled[key]
     all = version_lookup[pkg]
-    matching = [s for s in specifier_set.filter(all, prereleases=True)]
+    matching = [s for s in all if specifier_set.contains(s, prereleases=True)]
     result = vn.VersionList() if not matching else _condensed_version_list(matching, all)
     evalled[key] = result
     return result
@@ -481,13 +486,7 @@ def download_db():
 MAX_VERSIONS = 10
 
 
-def _get_node(
-    name: str,
-    specifier: SpecifierSet,
-    extras: FrozenSet[str],
-    sqlite_cursor: sqlite3.Cursor,
-    version_lookup: VersionsLookup,
-):
+def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: VersionsLookup):
     name = _normalized_name(name)
     query = sqlite_cursor.execute(
         """
@@ -503,26 +502,24 @@ def _get_node(
         if (v := _acceptable_version(version))
     ]
 
-    # prioritize final versions
-    data.sort(key=lambda x: (not x[0].is_prerelease, x[0]), reverse=True)
-
     requirement_to_when: Dict[
         Tuple[str, SpecifierSet, FrozenSet[str]],
-        List[Tuple[pv.Version, Optional[Marker], Optional[Spec]]],
+        List[Tuple[pv.Version, Optional[Marker], Optional[List[Spec]]]],
     ] = defaultdict(list)
 
     # Generate a dictionary of requirement -> versions.
-    count = 0
-    used_versions: Dict[pv.Version, Tuple[str, str]] = {}
+    version_data: Dict[pv.Version, Tuple[str, str]] = {}
     python_constraints: Dict[vn.VersionList, Set[pv.Version]] = defaultdict(set)
 
     for version, requires_dist, requires_python, sha256_blob, path, sdist in data:
-        if not specifier.contains(version, prereleases=True):
+        # Sometimes 1.54.0 and 1.54 are both in the database.
+        if version in version_data:
+            copy = next(v for v in version_data if v == version)
+            print(
+                f"warning: {name}@={version} and {name}@={copy} are identical, but separately in the PyPI db",
+                file=sys.stderr,
+            )
             continue
-
-        count += 1
-        if count > MAX_VERSIONS:
-            break
 
         if requires_python:
             try:
@@ -564,11 +561,7 @@ def _get_node(
                 evalled = _evaluate_marker(r.marker, version_lookup)
 
                 # If statically false, or if we don't have any of the required variants, skip.
-                if (
-                    evalled is False
-                    or isinstance(evalled, list)
-                    and not any(all(v in extras for v in spec.variants) for spec in evalled)
-                ):
+                if evalled is False:
                     continue
 
                 if evalled is True:
@@ -589,24 +582,26 @@ def _get_node(
             continue
 
         sha256 = "".join(f"{x:02x}" for x in sha256_blob)
-        used_versions[version] = (sha256, path)
+        version_data[version] = (sha256, path)
 
         if python_versions != vn.any_version:
             python_constraints[python_versions].add(version)
 
-    return used_versions, requirement_to_when, python_constraints
+    return version_data, requirement_to_when, python_constraints
 
 
 class Node:
-    #: Versions of this package. Typicaly a subset of all known versions. Keys are versions, values
-    #: are (sha256, path) tuples.
+    #: All known versions of this package. Keys are versions, values are (sha256, path) tuples.
     versions: Dict[pv.Version, Tuple[str, str]]
+
+    #: Subset of the versions that we define in the package.py file.
+    used_versions: Set[pv.Version]
 
     #: Edges to dependencies, keyed by (name, specifier, extras), with values being a list of
     #: (version, marker, when) tuples.
     edges: Dict[
         Tuple[str, SpecifierSet, FrozenSet[str]],
-        List[Tuple[pv.Version, Optional[Marker], Optional[Spec]]],
+        List[Tuple[pv.Version, Optional[Marker], Optional[List[Spec]]]],
     ]
 
     #: Set of all variants of this package, needed by a dependent.
@@ -623,6 +618,7 @@ class Node:
 
     def __init__(self) -> None:
         self.versions = {}
+        self.used_versions = set()
         self.edges = {}
         self.variants = set()
         self.pythons = defaultdict(set)
@@ -634,42 +630,68 @@ def _generate(
 ):
     visited = set()
     lookup = VersionsLookup(sqlite_cursor)
-    graph = defaultdict(Node)
+    graph: Dict[str, Node] = {}
 
-    # Traverse edges
     while queue:
         name, specifier, extras, depth = queue.pop()
-        print(f"{' ' * depth}{name} {specifier}", file=sys.stderr)
-        versions, edges, python_constraints = _get_node(
-            name, specifier, extras, sqlite_cursor, lookup
-        )
-        node = graph[name]
-        node.versions.update(versions)
+        print(f"{' ' * depth}{name} {specifier} {len(queue)}", file=sys.stderr)
+        # Populate package info if we haven't seen it yet.
+        if name not in graph:
+            node = Node()
+            versions, edges, python_constraints = _get_node(name, sqlite_cursor, lookup)
+            node.versions = versions
+            node.edges = edges
+            node.pythons = python_constraints
+            graph[name] = node
+        else:
+            node = graph[name]
+
         node.variants.update(extras)
-        for python_constraints, versions in python_constraints.items():
-            node.pythons[python_constraints].update(versions)
-        for key in edges:
-            node.edges[key] = edges[key]
+
+        # Select at most MAX_VERSIONS versions
+        version_iterator = (
+            v
+            for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v))
+            if specifier.contains(v, prereleases=True)
+        )
+        used_versions = [v for v, _ in zip(version_iterator, range(MAX_VERSIONS))]
+
+        node.used_versions.update(used_versions)
+
+        # Now go over the edges.
+        for key, value in node.edges.items():
+            # Do not visit the same edge twice.
             if key in visited:
                 continue
+            # See if this edge applies to any of the selected versions.
+            for version, marker, marker_specs in value:
+                if version not in used_versions:
+                    continue
+                if marker_specs is None or any(
+                    extras.issuperset(s.variants) for s in marker_specs
+                ):
+                    break
+            else:
+                continue
+
+            # Enqueue the edge.
             visited.add(key)
             queue.append((*key, depth + 1))
 
-    # Condense edges to (depends on spec, marker condition) -> versions
+    print("simplifying edges...", file=sys.stderr)
+
+    # Condense edges to (depends on spec, marker condition) -> versions. Notice that in some cases
+    # distinct specifiers may lead to the same spec constraint, e.g. >3 and >=3 if there is no
+    # version exactly 3.
     for name, node in graph.items():
         dep_to_when = defaultdict(set)
         for (child, specifier, extras), data in node.edges.items():
-            child_versions = graph[child].versions.keys()
+            # Skip specifiers for which we don't have any versions, this saves a lot of time.
+            if not any(v in node.used_versions for v, _, _ in data):
+                continue
             variants = "".join(f"+{v}" for v in extras)
-            spec = Spec(f"py-{child}{variants}")
-            try:
-                spec.versions = _condensed_version_list(
-                    [v for v in child_versions if specifier.contains(v, prereleases=True)],
-                    child_versions,
-                )
-            except IndexError:
-                # This happens if a package does not define any versions (todo, improve).
-                spec.versions = vn.VersionList([":"])
+            spec = Spec(f"{SPACK_PREFIX}{child}{variants}")
+            spec.versions = _pkg_specifier_set_to_version_list(child, specifier, lookup)
 
             for version, marker, marker_specs in data:
                 if isinstance(marker_specs, list):
@@ -704,6 +726,56 @@ def _generate(
             node.children.insert(0, (depends_on, when_spec, None))
 
     return graph
+
+
+def _print_package(name: str, node: Node, f: io.StringIO):
+    for version in sorted(node.used_versions, reverse=True):
+        sha256, path = node.versions[version]
+        spack_v = _packaging_to_spack_version(version)
+        print(
+            f'    version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
+            file=f,
+        )
+    print(file=f)
+    for variant in sorted(node.variants):
+        print(f'    variant("{variant}", default=False)', file=f)
+    if node.variants:
+        print(file=f)
+
+    uncommented_lines: List[str] = []
+    commented_lines: List[Tuple[str, str]] = []
+
+    for spec, when_spec, marker in node.children:
+        when_spec_str = _format_when_spec(when_spec)
+        if when_spec_str:
+            depends_on = f'depends_on("{spec}", when="{when_spec_str}")'
+        else:
+            depends_on = f'depends_on("{spec}")'
+
+        if marker is not None:
+            commented_lines.append((depends_on, f"marker: {marker}"))
+        elif spec.name == name:
+            # TODO: could turn this into a requirement: requires("+x", when="@y")
+            commented_lines.append((depends_on, "self-dependency"))
+        else:
+            uncommented_lines.append(depends_on)
+
+    if uncommented_lines:
+        print('    with default_args(type="run"):', file=f)
+    elif commented_lines:
+        print('    # with default_args(type="run"):', file=f)
+
+    for line in uncommented_lines:
+        print(f"        {line}", file=f)
+
+    # Group commented lines by comment
+    commented_lines.sort(key=lambda x: x[1])
+    for comment, group in itertools.groupby(commented_lines, key=lambda x: x[1]):
+        print(f"\n        # {comment}", file=f)
+        for line, _ in group:
+            print(f"        # {line}", file=f)
+
+    print(file=f)
 
 
 def main():
@@ -760,31 +832,24 @@ def main():
 
         graph = _generate(queue, sqlite_cursor)
 
-        # dump the graph as spack package
-        for name, node in sorted(graph.items(), key=lambda x: x[0]):
-            print(name)
-            for version in sorted(node.versions, reverse=True):
-                sha256, path = node.versions[version]
-                spack_v = _packaging_to_spack_version(version)
-                print(
-                    f'  version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")'
-                )
-            print()
-            for variant in sorted(node.variants):
-                print(f'  variant("{variant}", default=False)')
-            if node.variants:
-                print()
+        output_dir = pathlib.Path(args.directory or "pypi")
+        packages_dir = output_dir / "packages"
 
-            for spec, when_spec, marker in node.children:
-                when_spec_str = _format_when_spec(when_spec)
-                if when_spec_str:
-                    depends_on = f'  depends_on("{spec}", when="{when_spec_str}")'
-                else:
-                    depends_on = f'  depends_on("{spec}")'
-                if marker is not None:
-                    depends_on += f" # {marker}"
-                print(depends_on)
-            print()
+        if not output_dir.exists():
+            packages_dir.mkdir(parents=True)
+
+        if not (output_dir / "repo.yaml").exists():
+            with open(output_dir / "repo.yaml", "w") as f:
+                f.write("repo:\n  namespace: python\n")
+
+        for name, node in graph.items():
+            spack_name = f"{SPACK_PREFIX}{name}"
+            package_dir = packages_dir / spack_name
+            package_dir.mkdir(parents=True, exist_ok=True)
+            with open(package_dir / "package.py", "w") as f:
+                print("from spack.package import *\n\n", file=f)
+                print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
+                _print_package(name, node, f)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,6 @@ import re
 import shutil
 import sqlite3
 import sys
-import time
 import urllib.request
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union

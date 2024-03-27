@@ -499,7 +499,7 @@ def _format_when_spec(spec: Spec) -> str:
 
 
 def download_db():
-    print("Downloading latest database (~500MB, may take a while...)", file=sys.stderr)
+    print("Downloading latest database (~1GB, may take a while...)", file=sys.stderr)
     with urllib.request.urlopen(DB_URL) as response, open("data.db", "wb") as f:
         with gzip.GzipFile(fileobj=response) as gz:
             shutil.copyfileobj(gz, f)

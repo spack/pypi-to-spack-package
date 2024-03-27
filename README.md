@@ -177,6 +177,25 @@ For every requirement / constraint that may apply, we take at most the best 10 m
    ```
 4. Run `python3 src/import.py pypi-export/` to import as sqlite.
 
+TODO: explain how to export all unique (name, version) pairs:
+
+```sql
+EXPORT DATA OPTIONS(
+  compression="GZIP",
+  uri="gs://<bucket>/pypi-versions/pypi-*.json.gz",
+  format="JSON",
+  overwrite=true
+)
+
+AS
+
+SELECT
+  REGEXP_REPLACE(LOWER(name), "[-_.]+", "-") AS normalized_name,
+  version
+FROM `bigquery-public-data.pypi.distribution_metadata`
+GROUP BY normalized_name, version
+```
+
 ## License
 
 This project is part of Spack. Spack is distributed under the terms of both the

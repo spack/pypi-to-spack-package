@@ -788,7 +788,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
             file=f,
         )
     print(file=f)
-    wheel_only = all(path.endswith(".whl") for _, path in node.versions.values())
+    wheel_only = all(node.versions[v][1].endswith(".whl") for v in node.used_versions)
     if wheel_only:
         print("    # wheel only", file=f)
     for variant in sorted(node.variants):

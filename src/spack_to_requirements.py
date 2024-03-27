@@ -25,13 +25,17 @@ def dump(f: io.StringIO = sys.stdout):
             continue
         count += 1
         name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
+
+        variants = ','.join(s for s in pkg.variants if s != 'build_system')
+        variants = variants if not variants else f"[{variants}]"
+
         for version in pkg.versions:
             try:
                 Version(str(version))
             except:
                 print(f"skipping {name}=={version}")
                 continue
-            print(f"{name}=={version}", file=f)
+            print(f"{name}{variants} =={version}", file=f)
     print(f"total: {count} pypi packages")
 
 

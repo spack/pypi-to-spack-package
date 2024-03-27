@@ -74,8 +74,8 @@ class VersionsLookup:
 
     def _query(self, name: str) -> List[pv.Version]:
         # Todo, de-duplicate identical versions e.g. "3.7.0" and "3.7".
-        query = self.cursor.execute("SELECT version FROM versions WHERE name = ?", (name,))
-        return sorted(vv for v, in query if (vv := _acceptable_version(v)))
+        query = self.cursor.execute("SELECT version FROM version_lookup WHERE name = ?", (name,))
+        return sorted({vv for v, in query if (vv := _acceptable_version(v))})
 
     def _python_versions(self) -> List[pv.Version]:
         return [
@@ -83,16 +83,6 @@ class VersionsLookup:
             for major, minor, patch in KNOWN_PYTHON_VERSIONS
             for p in range(patch + 1)
         ]
-
-    def _request(self, name: str) -> List[pv.Version]:
-        url = f"https://pypi.org/pypi/{name}/json"
-        try:
-            with urllib.request.urlopen(url) as response:
-                data = json.load(response)
-                return [vv for v in data["releases"] if (vv := _acceptable_version(v))]
-        except urllib.error.HTTPError as e:
-            print(f"could not fetch {url}: {e}", file=sys.stderr)
-            return []
 
     def __getitem__(self, name: str) -> List[pv.Version]:
         result = self.cache.get(name)
@@ -102,12 +92,6 @@ class VersionsLookup:
             result = self._python_versions()
         else:
             result = self._query(name)
-            if not result:
-                # fall back to http request
-                print(
-                    f"no versions found for {name}, falling back to http request", file=sys.stderr
-                )
-                result = self._request(name)
         self.cache[name] = result
         return result
 
@@ -365,7 +349,11 @@ def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.S
 def _acceptable_version(version: str) -> Optional[pv.Version]:
     """Maybe parse with packaging"""
     try:
-        return pv.parse(version)
+        v = pv.parse(version)
+        # do not support post releases of prereleases etc.
+        if v.pre and (v.post or v.dev or v.local):
+            return None
+        return v
     except pv.InvalidVersion:
         return None
 
@@ -517,16 +505,26 @@ def download_db():
             shutil.copyfileobj(gz, f)
 
 
-def _parse_requirements(
-    name: str, version: pv.Version, requires_dist: str
+def _validate_requirements(
+    name: str, version: pv.Version, requires_dist: str, version_lookup
 ) -> Optional[List[Requirement]]:
     requirements: List[Requirement] = []
     for requirement_str in json.loads(requires_dist):
         try:
-            requirements.append(Requirement(requirement_str))
+            r = Requirement(requirement_str)
         except InvalidRequirement:
             print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
             return None
+
+        # Normalize the name for good measture
+        r.name = _normalized_name(r.name)
+
+        # If the requirement is on an unknown package, we error out.
+        if not version_lookup[r.name]:
+            print(f"{name}@{version}: unknown dependency {r.name}", file=sys.stderr)
+            return None
+
+        requirements.append(r)
     return requirements
 
 
@@ -592,13 +590,15 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
             python_versions = vn.any_version
 
         # go over the edges
-        requirements = _parse_requirements(name, version, requires_dist)
+        requirements = _validate_requirements(name, version, requires_dist, version_lookup)
 
         # Invalid requirements, skip this version.
         if requirements is None:
             continue
 
         for r in requirements:
+            child_name = _normalized_name(r.name)
+
             if r.marker is not None:
                 evalled = _evaluate_marker(r.marker, version_lookup)
 
@@ -615,9 +615,9 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
             else:
                 evalled = None
 
-            requirement_to_when[
-                (_normalized_name(r.name), r.specifier, frozenset(r.extras))
-            ].append((version, r.marker, evalled))
+            requirement_to_when[(child_name, r.specifier, frozenset(r.extras))].append(
+                (version, r.marker, evalled)
+            )
 
         sha256 = "".join(f"{x:02x}" for x in sha256_blob)
         version_data[version] = (sha256, path)

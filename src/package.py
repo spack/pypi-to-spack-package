@@ -14,6 +14,7 @@ import re
 import shutil
 import sqlite3
 import sys
+import urllib.error
 import urllib.request
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
@@ -83,11 +84,30 @@ class VersionsLookup:
             for p in range(patch + 1)
         ]
 
+    def _request(self, name: str) -> List[pv.Version]:
+        url = f"https://pypi.org/pypi/{name}/json"
+        try:
+            with urllib.request.urlopen(url) as response:
+                data = json.load(response)
+                return [vv for v in data["releases"] if (vv := _acceptable_version(v))]
+        except urllib.error.HTTPError as e:
+            print(f"could not fetch {url}: {e}", file=sys.stderr)
+            return []
+
     def __getitem__(self, name: str) -> List[pv.Version]:
         result = self.cache.get(name)
         if result is not None:
             return result
-        result = self._query(name) if name != "python" else self._python_versions()
+        if name == "python":
+            result = self._python_versions()
+        else:
+            result = self._query(name)
+            if not result:
+                # fall back to http request
+                print(
+                    f"no versions found for {name}, falling back to http request", file=sys.stderr
+                )
+                result = self._request(name)
         self.cache[name] = result
         return result
 
@@ -102,9 +122,13 @@ def _eval_python_version_marker(
     if op not in ("==", ">", ">=", "<", "<=", "!="):
         return None
 
-    return _pkg_specifier_set_to_version_list(
-        "python", SpecifierSet(f"{op}{value}"), version_lookup
-    )
+    try:
+        specifier = SpecifierSet(f"{op}{value}")
+    except InvalidSpecifier:
+        print(f"could not parse `{op}{value}` as specifier", file=sys.stderr)
+        return None
+
+    return _pkg_specifier_set_to_version_list("python", specifier, version_lookup)
 
 
 def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None, bool, List[Spec]]:
@@ -180,7 +204,7 @@ def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None,
                 return [Spec(f"+{value.value}")]
             elif op.value == "!=":
                 return [Spec(f"~{value.value}")]
-    except SpecSyntaxError as e:
+    except (SpecSyntaxError, ValueError) as e:
         print(f"could not parse `{value}` as variant: {e}", file=sys.stderr)
         return None
 

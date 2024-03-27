@@ -780,6 +780,12 @@ def _print_package(name: str, node: Node, f: io.StringIO):
         print("    # No versions available.", file=f)
         print("    pass", file=f)
         return
+    wheel_only = (
+        " [WHEEL ONLY]"
+        if all(node.versions[v][1].endswith(".whl") for v in node.used_versions)
+        else ""
+    )
+    print(f"    # BEGIN VERSIONS{wheel_only}", file=f)
     for version in sorted(node.used_versions, reverse=True):
         sha256, path = node.versions[version]
         spack_v = _packaging_to_spack_version(version)
@@ -787,12 +793,12 @@ def _print_package(name: str, node: Node, f: io.StringIO):
             f'    version("{spack_v}", sha256="{sha256}", url="https://pypi.org/packages/{path}")',
             file=f,
         )
+    print("    # END VERSIONS", file=f)
     print(file=f)
-    wheel_only = all(node.versions[v][1].endswith(".whl") for v in node.used_versions)
-    if wheel_only:
-        print("    # wheel only", file=f)
+    print("    # BEGIN VARIANTS", file=f)
     for variant in sorted(node.variants):
         print(f'    variant("{variant}", default=False)', file=f)
+    print("    # END VARIANTS", file=f)
     if node.variants:
         print(file=f)
 
@@ -814,6 +820,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
         else:
             uncommented_lines.append(depends_on)
 
+    print("    # BEGIN DEPENDENCIES", file=f)
     if uncommented_lines:
         print('    with default_args(type="run"):', file=f)
     elif commented_lines:
@@ -828,7 +835,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
         print(f"\n        # {comment}", file=f)
         for line, _ in group:
             print(f"        # {line}", file=f)
-
+    print("    # END DEPENDENCIES", file=f)
     print(file=f)
 
 

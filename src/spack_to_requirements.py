@@ -26,7 +26,7 @@ def dump(f: io.StringIO = sys.stdout):
         count += 1
         name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
 
-        variants = ','.join(s for s in pkg.variants if s != 'build_system')
+        variants = ",".join(s for s in pkg.variants if s != "build_system")
         variants = variants if not variants else f"[{variants}]"
 
         for version in pkg.versions:

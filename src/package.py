@@ -56,7 +56,6 @@ KNOWN_PYTHON_VERSIONS = (
 )
 
 HEADER = """\
-##############################################################################
 # Copyright 2013-2024 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
@@ -789,6 +788,9 @@ def _print_package(name: str, node: Node, f: io.StringIO):
             file=f,
         )
     print(file=f)
+    wheel_only = all(path.endswith(".whl") for _, path in node.versions.values())
+    if wheel_only:
+        print("    # wheel only", file=f)
     for variant in sorted(node.variants):
         print(f'    variant("{variant}", default=False)', file=f)
     if node.variants:

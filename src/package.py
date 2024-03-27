@@ -727,27 +727,26 @@ def _generate(
             # Skip specifiers for which we don't have any versions, this saves a lot of time.
             if not any(v in node.used_versions for v, _, _ in data):
                 continue
+            # TODO: skip if we don't have any variants.
             variants = "".join(f"+{v}" for v in extras)
             spec = Spec(f"{SPACK_PREFIX}{child}{variants}")
             spec.versions = _pkg_specifier_set_to_version_list(child, specifier, lookup)
 
-            # Sometimes a package is missing versions because it is no-source and binary wheel
-            # only. I guess we may need to do a request then to figure out versions? It's rare.
-            if not spec.versions:
-                print(f"{name} -> {child} {specifier} has no matching versions", file=sys.stderr)
-                spec.versions = vn.any_version
-
+            to_add = []
             for version, marker, marker_specs in data:
                 if isinstance(marker_specs, list):
                     for marker_spec in marker_specs:
-                        dep_to_when[(spec, marker, marker_spec)].add(version)
+                        if node.variants.issuperset(marker_spec.variants):
+                            to_add.append(((spec, marker, marker_spec), version))
                 else:
-                    dep_to_when[(spec, marker, None)].add(version)
+                    to_add.append(((spec, marker, None), version))
 
-        for key in list(dep_to_when.keys()):
-            marker_spec = key[2]
-            if marker_spec and not node.variants.issuperset(marker_spec.variants):
-                del dep_to_when[key]
+            if to_add and not spec.versions:
+                print(f"{name} -> {child} {specifier} has no matching versions", file=sys.stderr)
+                spec.versions = vn.any_version
+
+            for key, value in to_add:
+                dep_to_when[key].add(value)
 
         # Finally create an list of edges in the format and order we can use in package.py
         for (spec, marker, marker_spec), versions in dep_to_when.items():

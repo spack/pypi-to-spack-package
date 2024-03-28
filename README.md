@@ -136,25 +136,24 @@ For every requirement / constraint that may apply, we take at most the best 10 m
      x.requires_dist,
      x.requires_python,
      x.sha256_digest,
-     x.path,
-     x.packagetype = "sdist" AS is_sdist
+     x.path
 
    FROM `bigquery-public-data.pypi.distribution_metadata` AS x
 
    -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built
    -- both binary and pure python, in that case prefer sdist)
    LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y ON (
-    REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
-    AND x.version = y.version
-    AND x.packagetype = "bdist_wheel"
-    AND y.packagetype = "bdist_wheel"
-    AND y.python_version NOT IN ("py2.py3", "py3")
+     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
+     AND x.version = y.version
+     AND x.packagetype = "bdist_wheel"
+     AND y.packagetype = "bdist_wheel"
+     AND y.path NOT LIKE "%any.whl"
    )
 
    -- Select sdist and universal wheels
    WHERE (
      x.packagetype = "sdist"
-     OR x.packagetype = "bdist_wheel" AND x.python_version IN ("py2.py3", "py3")
+     OR x.path LIKE "%any.whl"
    ) AND y.name IS NULL
    -- AND x.upload_time >= "2024-03-01" -- If you already have a db, set this to last time fetched
 

@@ -21,8 +21,7 @@ version TEXT NOT NULL,
 requires_dist TEXT,
 requires_python TEXT,
 sha256 BLOB(32) NOT NULL,
-path TEXT NOT NULL,
-is_sdist INTEGER
+path TEXT NOT NULL
 )
 """
 )
@@ -37,14 +36,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS name_index ON versions (name, version)
 def insert(entries):
     c.executemany(
         """
-    INSERT INTO versions (name, version, requires_dist, requires_python, sha256, path, is_sdist)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO versions (name, version, requires_dist, requires_python, sha256, path)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, version) DO UPDATE SET
     requires_dist = excluded.requires_dist,
     requires_python = excluded.requires_python,
     sha256 = excluded.sha256,
-    path = excluded.path,
-    is_sdist = excluded.is_sdist
+    path = excluded.path
     """,
         entries,
     )
@@ -70,7 +68,6 @@ for file in sorted(os.listdir(path)):
                     data.get("requires_python", ""),
                     bytearray.fromhex(data.get("sha256_digest", "")),
                     data["path"],
-                    data["is_sdist"],
                 )
             )
 

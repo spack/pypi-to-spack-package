@@ -53,7 +53,7 @@ for file in sorted(os.listdir(path)):
 
             entries.append((data["normalized_name"], data["version"]))
 
-            if i % 5000 == 0:
+            if i % 10000 == 0:
                 insert(entries)
                 entries = []
                 print(i)

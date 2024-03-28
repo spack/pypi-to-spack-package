@@ -1930,6 +1930,7 @@ flufl-lock ==5.0.3
 flufl-lock ==3.2
 fn-py ==0.6.0
 fn-py ==0.5.2
+folium ==0.16.0
 fonttools ==4.39.4
 fonttools ==4.37.3
 fonttools ==4.31.2
@@ -3011,6 +3012,7 @@ kombu[redis] ==4.6.11
 kombu[redis] ==4.6.6
 kombu[redis] ==4.5.0
 kombu[redis] ==4.3.0
+kornia ==0.7.2
 kornia ==0.7.1
 kornia ==0.7.0
 kornia ==0.6.12
@@ -3026,6 +3028,8 @@ kornia ==0.6.3
 kornia ==0.6.2
 kornia ==0.6.1
 kornia ==0.5.10
+kornia-rs ==0.1.1
+kornia-rs ==0.1.0
 kosh ==3.0.1
 kosh ==2.2
 kosh ==2.1
@@ -3138,6 +3142,7 @@ libensemble[mpi,scipy,petsc4py,nlopt,mpmath,deap,tasmanian] ==0.1.0
 liblas ==1.8.1
 librosa ==0.9.1
 librosa ==0.7.2
+libsonata ==0.1.25
 lifelines ==0.25.5
 lifelines ==0.9.4
 lightgbm[mpi] ==3.1.1
@@ -3531,6 +3536,7 @@ modred ==2.0.3
 modred ==2.0.2
 modred ==2.0.1
 modred ==2.0.0
+modules-gui ==0.2
 moltemplate ==2.5.8
 monkeytype ==22.2.0
 monotonic ==1.6
@@ -5291,6 +5297,7 @@ pytest-metadata ==1.11.0
 pytest-mock ==3.10.0
 pytest-mock ==1.11.1
 pytest-mock ==1.2
+pytest-mpi ==0.6
 pytest-mypy ==0.4.2
 pytest-openfiles ==0.5.0
 pytest-parallel ==0.1.1
@@ -7000,6 +7007,7 @@ uvw[mpi] ==0.3.1
 uvw[mpi] ==0.0.7
 uwsgi ==2.0.18
 validators ==0.20.0
+vascpy ==0.1.1
 vcf-kit ==0.1.6
 vcrpy ==5.1.0
 vcrpy ==4.2.1

@@ -1587,7 +1587,6 @@ dom-toml ==0.6.1
 domdf-python-tools ==3.6.1
 dominate ==2.6.0
 dotmap ==1.3.30
-dotnetcore2 ==2.1.14
 downhill ==0.4.0
 doxypypy ==0.8.8.6
 dpath ==2.1.6
@@ -2591,7 +2590,6 @@ inquirerpy ==0.3.4
 instrain[prodigal] ==1.6.3
 instrain[prodigal] ==1.5.7
 intbitset ==3.0.1
-intel-openmp ==2021.1.2
 intensity-normalization ==2.1.1
 interface-meta ==1.3.0
 interface-meta ==1.2.4
@@ -2715,12 +2713,6 @@ jax ==0.4.16
 jax ==0.4.3
 jax ==0.3.23
 jax ==0.2.25
-jaxlib[cuda,cuda_arch] ==0.4.25
-jaxlib[cuda,cuda_arch] ==0.4.24
-jaxlib[cuda,cuda_arch] ==0.4.16
-jaxlib[cuda,cuda_arch] ==0.4.3
-jaxlib[cuda,cuda_arch] ==0.3.22
-jaxlib[cuda,cuda_arch] ==0.1.74
 jdatetime ==3.6.2
 jdcal ==1.3
 jdcal ==1.2
@@ -6533,8 +6525,6 @@ tensorboard ==2.4.1
 tensorboard ==2.4.0
 tensorboard ==2.3.0
 tensorboard ==2.2.0
-tensorboard-data-server ==0.7.0
-tensorboard-data-server ==0.6.1
 tensorboard-plugin-wit ==1.8.1
 tensorboard-plugin-wit ==1.8.0
 tensorboard-plugin-wit ==1.7.0

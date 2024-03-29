@@ -79,9 +79,9 @@ class VersionsLookup:
 
     def _python_versions(self) -> List[pv.Version]:
         return [
-            pv.Version(f"{major}.{minor}.{p}")
+            pv.Version(f"{major}.{minor}.{patch}")
             for major, minor, patch in KNOWN_PYTHON_VERSIONS
-            for p in range(patch + 1)
+            # for p in range(1, patch + 1)
         ]
 
     def __getitem__(self, name: str) -> List[pv.Version]:
@@ -772,6 +772,8 @@ def _generate(
 
         # Prepend dependencies on Python versions.
         for python_constraints, versions in sorted(node.pythons.items(), key=lambda x: x[0]):
+            if versions.isdisjoint(node.used_versions):
+                continue
             when_spec = Spec()
             when_spec.versions = _condensed_version_list(versions, node.versions.keys())
             depends_on = Spec("python")

@@ -33,7 +33,7 @@ from spack.version.version_types import VersionStrComponent
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
-    vn.StandardVersion.typemin(), vn.StandardVersion.from_string("3.7")
+    vn.StandardVersion.typemin(), vn.StandardVersion.from_string("3.5")
 )
 
 # The prefix to use for Pythohn package names in Spack.
@@ -43,9 +43,10 @@ NAME_REGEX = re.compile(r"[-_.]+")
 
 DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/latest/data.db.gz"
 
-MAX_VERSIONS = 10
+MAX_VERSIONS = 5
 
 KNOWN_PYTHON_VERSIONS = (
+    (3, 6, 15),
     (3, 7, 17),
     (3, 8, 18),
     (3, 9, 18),

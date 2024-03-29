@@ -797,7 +797,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
     print(file=f)
     print("    # BEGIN VARIANTS", file=f)
     for variant in sorted(node.variants):
-        print(f'    variant("{variant}", default=False)', file=f)
+        print(f'    variant("{variant}", default=False, description="{variant}")', file=f)
     print("    # END VARIANTS", file=f)
     if node.variants:
         print(file=f)

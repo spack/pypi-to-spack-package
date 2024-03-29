@@ -4,7 +4,7 @@ import sys
 
 import spack.repo
 from packaging.version import Version
-from spack.build_systems.python import PythonPackage
+from spack.build_systems.python import PythonExtension, PythonPackage
 
 # db
 conn = sqlite3.connect("data.db")
@@ -12,7 +12,7 @@ c = conn.cursor()
 
 
 def is_pypi(pkg):
-    if not PythonPackage in pkg.__bases__:
+    if PythonPackage not in pkg.__bases__ and PythonExtension not in pkg.__bases__:
         return False
     name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
     return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None

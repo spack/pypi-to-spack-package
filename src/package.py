@@ -721,10 +721,15 @@ def _generate(
     # distinct specifiers may lead to the same spec constraint, e.g. >3 and >=3 if there is no
     # version exactly 3.
     for name, node in graph.items():
+
         dep_to_when = defaultdict(set)
         for (child, specifier, extras), data in node.edges.items():
-            # Skip specifiers for which we don't have any versions, this saves a lot of time.
-            if not any(v in node.used_versions for v, _, _ in data):
+            # Skip specifiers for which we don't have the versions and variants.
+            if not any(
+                v in node.used_versions
+                and (not ms or any(node.variants.issuperset(m.variants) for m in ms))
+                for v, _, ms in data
+            ):
                 continue
             # TODO: skip if we don't have any variants.
             variants = "".join(f"+{v}" for v in extras)

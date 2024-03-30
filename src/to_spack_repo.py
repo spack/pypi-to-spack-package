@@ -73,7 +73,27 @@ for dir in sorted(os.listdir(repo_in)):
                 lines_to_delete.add(i)
             continue
 
-        elif not isinstance(node, ast.Expr):
+        if isinstance(node, ast.FunctionDef):
+            if node.name in (
+                "setup_build_environment",
+                "url_for_version",
+                "install",
+                "build_directory",
+                "patch",
+            ) or any(
+                isinstance(d, ast.Call)
+                and isinstance(d.func, ast.Name)
+                and d.func.id in ("run_before", "run_after")
+                for d in node.decorator_list
+            ):
+                for i in range(node.lineno - 1, node.end_lineno):
+                    lines_to_delete.add(i)
+                for d in node.decorator_list:
+                    for i in range(d.lineno - 1, d.end_lineno):
+                        lines_to_delete.add(i)
+            continue
+
+        if not isinstance(node, ast.Expr):
             continue
 
         expr = node.value
@@ -82,7 +102,7 @@ for dir in sorted(os.listdir(repo_in)):
         if (
             isinstance(expr, ast.Call)
             and isinstance(expr.func, ast.Name)
-            and expr.func.id in ("version", "depends_on", "variant")
+            and expr.func.id in ("version", "depends_on", "variant", "patch")
         ):
             for i in range(expr.lineno - 1, expr.end_lineno):
                 lines_to_delete.add(i)

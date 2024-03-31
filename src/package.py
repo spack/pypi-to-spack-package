@@ -534,7 +534,8 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
         """
         SELECT version, requires_dist, requires_python, sha256, path
         FROM versions
-        WHERE name = ? AND path LIKE "%py3-none-any.whl""",
+        WHERE name = ? AND path LIKE "%py3-none-any.whl"
+        """,
         (name,),
     )
 
@@ -723,7 +724,9 @@ def _generate(
     # version exactly 3.
     for name, node in graph.items():
 
-        dep_to_when = defaultdict(set)
+        dep_to_when: Dict[Tuple[Spec, Optional[Marker], Optional[Spec]], Set[pv.Version]] = (
+            defaultdict(set)
+        )
         for (child, specifier, extras), data in node.edges.items():
             # Skip specifiers for which we don't have the versions and variants.
             if not any(
@@ -737,7 +740,7 @@ def _generate(
             spec = Spec(f"{SPACK_PREFIX}{child}{variants}")
             spec.versions = _pkg_specifier_set_to_version_list(child, specifier, lookup)
 
-            to_add = []
+            to_add: List[Tuple[Tuple[Spec, Optional[Marker], Optional[Spec]], pv.Version]] = []
             for version, marker, marker_specs in data:
                 if isinstance(marker_specs, list):
                     for marker_spec in marker_specs:
@@ -753,13 +756,30 @@ def _generate(
             for key, value in to_add:
                 dep_to_when[key].add(value)
 
+        # Restrict the set of all versions to about 10 releases back from the oldest used version,
+        # so that when conditions are not too long.
+        if node.used_versions:
+            all_versions = sorted(node.versions.keys())
+            min_version = min(node.used_versions)
+            from_index = max(0, all_versions.index(min_version) - 10)
+            versions_we_care_about = all_versions[from_index:]
+        else:
+            versions_we_care_about = []
+
         # Finally create an list of edges in the format and order we can use in package.py
         for (spec, marker, marker_spec), versions in dep_to_when.items():
+            # With certain OR conditions in markers we can still end up with a when condition that
+            # does not touch any of the versions we care about.
+            if versions.isdisjoint(node.used_versions):
+                continue
             node.children.append(
                 (
                     spec,
                     _make_when_spec(
-                        marker_spec, _condensed_version_list(versions, node.versions.keys())
+                        marker_spec,
+                        _condensed_version_list(
+                            versions.intersection(versions_we_care_about), versions_we_care_about
+                        ),
                     ),
                     marker,
                 )
@@ -775,7 +795,9 @@ def _generate(
             if versions.isdisjoint(node.used_versions):
                 continue
             when_spec = Spec()
-            when_spec.versions = _condensed_version_list(versions, node.versions.keys())
+            when_spec.versions = _condensed_version_list(
+                versions.intersection(versions_we_care_about), versions_we_care_about
+            )
             depends_on = Spec("python")
             depends_on.versions = python_constraints
             node.children.insert(0, (depends_on, when_spec, None))

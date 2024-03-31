@@ -534,7 +534,7 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
         """
         SELECT version, requires_dist, requires_python, sha256, path
         FROM versions
-        WHERE name = ?""",
+        WHERE name = ? AND path LIKE "%py3-none-any.whl""",
         (name,),
     )
 

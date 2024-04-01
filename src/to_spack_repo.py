@@ -4,7 +4,6 @@ import ast
 import os
 import re
 import sys
-from typing import List, Tuple
 
 import spack.util.naming as nm
 
@@ -73,6 +72,7 @@ for dir in sorted(os.listdir(repo_in)):
                 lines_to_delete.add(i)
             continue
 
+        # delete build instructions
         if isinstance(node, ast.FunctionDef):
             if node.name in (
                 "setup_build_environment",
@@ -98,7 +98,7 @@ for dir in sorted(os.listdir(repo_in)):
 
         expr = node.value
 
-        # and delete any version, depends_on, or variant calls
+        # delete any version, depends_on, or variant directive
         if (
             isinstance(expr, ast.Call)
             and isinstance(expr.func, ast.Name)

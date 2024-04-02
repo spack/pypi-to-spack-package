@@ -122,7 +122,7 @@ For every requirement / constraint that may apply, we take at most the best 10 m
    ```sql
    EXPORT DATA OPTIONS(
      compression="GZIP",
-     uri="gs://<bucket>/pypi-export/pypi-*.json.gz",
+     uri="gs://<bucket>/pypi-distributions/pypi-*.json.gz",
      format="JSON",
      overwrite=true
    )
@@ -170,30 +170,32 @@ For every requirement / constraint that may apply, we take at most the best 10 m
    ) = 1
    ```
    which should say something like "Successfully exported 5804957 rows into 101 files".
-3. Download the files using:
-   ```console
-   $ gsutil -m cp -r gs://<bucket>/pypi-export .
+
+3. Also make an export of all known versions:
+
+   ```sql
+   EXPORT DATA OPTIONS(
+     compression="GZIP",
+     uri="gs://<bucket>/pypi-versions/pypi-*.json.gz",
+     format="JSON",
+     overwrite=true
+   )
+
+   AS
+
+   SELECT
+     REGEXP_REPLACE(LOWER(name), "[-_.]+", "-") AS normalized_name,
+     version
+   FROM `bigquery-public-data.pypi.distribution_metadata`
+   GROUP BY normalized_name, version
    ```
-4. Run `python3 src/import.py pypi-export/` to import as sqlite.
+4. Download the files using:
+   ```console
+   $ gsutil -m cp -r gs://<bucket>/pypi-distributions .
+   $ gsutil -m cp -r gs://<bucket>/pypi-versions .
+   ```
+4. Run `python3 src/import.py --versions --distributions ` to import as sqlite.
 
-TODO: explain how to export all unique (name, version) pairs:
-
-```sql
-EXPORT DATA OPTIONS(
-  compression="GZIP",
-  uri="gs://<bucket>/pypi-versions/pypi-*.json.gz",
-  format="JSON",
-  overwrite=true
-)
-
-AS
-
-SELECT
-  REGEXP_REPLACE(LOWER(name), "[-_.]+", "-") AS normalized_name,
-  version
-FROM `bigquery-public-data.pypi.distribution_metadata`
-GROUP BY normalized_name, version
-```
 
 ## License
 

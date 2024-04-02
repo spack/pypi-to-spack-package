@@ -109,7 +109,7 @@ def import_versions(path="pypi-versions"):
     sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 
-def import_distributions(path="pypi-export"):
+def import_distributions(path="pypi-distributions"):
     entries = []
     i = 0
     print("importing metadata...")

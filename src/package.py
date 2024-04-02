@@ -672,6 +672,11 @@ def _generate(
     lookup = VersionsLookup(sqlite_cursor)
     graph: Dict[str, Node] = {}
 
+    # temporary: do not generate new versions.
+    usable_versions: Dict[str, Set[pv.Version]] = defaultdict(set)
+    for name, specifier, extras, _ in queue:
+        usable_versions[name].add(pv.Version(list(specifier)[0].version))
+
     while queue:
         name, specifier, extras, depth = queue.pop()
         print(f"{' ' * depth}{name} {specifier} [queue = #{len(queue)}]", file=sys.stderr)
@@ -689,12 +694,27 @@ def _generate(
         node.variants.update(extras)
 
         # Select at most MAX_VERSIONS versions
-        version_iterator = (
+
+        version_iterator = lambda: (
             v
             for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v))
             if specifier.contains(v, prereleases=True)
         )
-        used_versions = [v for v, _ in zip(version_iterator, range(MAX_VERSIONS))]
+        # Spack doesn't know about this package.
+        if name not in usable_versions:
+            used_versions = [v for v, _ in zip(version_iterator(), range(MAX_VERSIONS))]
+        else:
+            used_versions = [
+                v
+                for v in sorted(
+                    node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v)
+                )
+                if specifier.contains(v, prereleases=True) and v in usable_versions[name]
+            ]
+
+            if not used_versions:
+                used_versions = [v for v, _ in zip(version_iterator(), range(1))]
+                print(f"{name} {specifier}: adding {used_versions} instead", file=sys.stderr)
 
         node.used_versions.update(used_versions)
 

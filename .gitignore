@@ -1,9 +1,10 @@
 .env
 __pycache__
 
-/pypi
+/repo
 
 *.db
 *.json
 *.zst
 *.gz
+

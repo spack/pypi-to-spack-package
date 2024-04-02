@@ -59,6 +59,7 @@ def insert_versions(entries):
         """
     INSERT INTO versions (name, version)
     VALUES (?, ?)
+    ON CONFLICT(name, version) DO NOTHING
     """,
         entries,
     )
@@ -105,6 +106,7 @@ def import_versions(path="pypi-versions"):
                     percent = int(i / lines_estimate * 100)
                     print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
     insert_versions(entries)
+    sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 
 def import_distributions(path="pypi-export"):
@@ -141,6 +143,7 @@ def import_distributions(path="pypi-export"):
                     percent = int(i / lines_estimate * 100)
                     print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
     insert_distributions(entries)
+    sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 
 parser = argparse.ArgumentParser()

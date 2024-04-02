@@ -43,7 +43,7 @@ NAME_REGEX = re.compile(r"[-_.]+")
 
 DB_URL = "https://github.com/haampie/pypi-to-spack-package/releases/download/latest/data.db.gz"
 
-MAX_VERSIONS = 5
+MAX_VERSIONS = 1
 
 KNOWN_PYTHON_VERSIONS = (
     (3, 6, 15),
@@ -859,6 +859,8 @@ def _print_package(name: str, node: Node, f: io.StringIO):
 
     for line in uncommented_lines:
         print(f"        {line}", file=f)
+    print("    # END DEPENDENCIES", file=f)
+    print(file=f)
 
     # Group commented lines by comment
     commented_lines.sort(key=lambda x: x[1])
@@ -866,8 +868,6 @@ def _print_package(name: str, node: Node, f: io.StringIO):
         print(f"\n        # {comment}", file=f)
         for line, _ in group:
             print(f"        # {line}", file=f)
-    print("    # END DEPENDENCIES", file=f)
-    print(file=f)
 
 
 def main():

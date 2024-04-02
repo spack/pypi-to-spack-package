@@ -113,6 +113,15 @@ for dir in sorted(os.listdir(repo_in)):
                 for i, line in enumerate(variants):
                     if pattern in line:
                         variants[i] = "\n".join(lines[expr.lineno - 1 : expr.end_lineno])
+            # Remove patch files
+            if expr.func.id == "patch":
+                arg = expr.args[0]
+                assert isinstance(arg, ast.Constant)
+                patch = os.path.join(repo_out, dir, arg.value)
+                try:
+                    os.unlink(patch)
+                except OSError:
+                    pass
 
     delete = sorted(lines_to_delete, reverse=True)
 

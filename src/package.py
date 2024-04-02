@@ -666,16 +666,17 @@ class Node:
 
 
 def _generate(
-    queue: List[Tuple[str, SpecifierSet, FrozenSet[str], int]], sqlite_cursor: sqlite3.Cursor
+    queue: List[Tuple[str, SpecifierSet, FrozenSet[str], int]], sqlite_cursor: sqlite3.Cursor,
+    no_new_versions: bool = False
 ):
     visited = set()
     lookup = VersionsLookup(sqlite_cursor)
     graph: Dict[str, Node] = {}
 
-    # temporary: do not generate new versions.
-    usable_versions: Dict[str, Set[pv.Version]] = defaultdict(set)
-    for name, specifier, extras, _ in queue:
-        usable_versions[name].add(pv.Version(list(specifier)[0].version))
+    if no_new_versions:
+        usable_versions: Dict[str, Set[pv.Version]] = defaultdict(set)
+        for name, specifier, extras, _ in queue:
+            usable_versions[name].add(pv.Version(list(specifier)[0].version))
 
     while queue:
         name, specifier, extras, depth = queue.pop()
@@ -693,15 +694,14 @@ def _generate(
 
         node.variants.update(extras)
 
-        # Select at most MAX_VERSIONS versions
-
+        # Pick at most MAX_VERSIONS versions
         version_iterator = lambda: (
             v
             for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v))
             if specifier.contains(v, prereleases=True)
         )
-        # Spack doesn't know about this package.
-        if name not in usable_versions:
+        if not no_new_versions or name not in usable_versions:
+            # Generate new versions
             used_versions = [v for v, _ in zip(version_iterator(), range(MAX_VERSIONS))]
         else:
             used_versions = [
@@ -899,6 +899,10 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="The command to run")
     p_new_generate = subparsers.add_parser("generate", help="Generate a package.py file")
     p_new_generate.add_argument("--directory", "-o", help="Output directory")
+    p_new_generate.add_argument("--clean", action="store_true", help="Clean output directory")
+    p_new_generate.add_argument(
+        "--no-new-versions", action="store_true", help="Do not add new versions when possible"
+    )
     p_new_generate.add_argument("requirements", help="requirements.txt file")
     subparsers.add_parser("info", help="Show basic info about database or package")
     subparsers.add_parser("update", help="Download the latest database")
@@ -937,10 +941,17 @@ def main():
             (_normalized_name(r.name), r.specifier, frozenset(r.extras), 0) for r in requirements
         ]
 
-        graph = _generate(queue, sqlite_cursor)
+        graph = _generate(queue, sqlite_cursor, args.no_new_versions)
 
         output_dir = pathlib.Path(args.directory or "pypi")
         packages_dir = output_dir / "packages"
+
+        if args.clean:
+            shutil.rmtree(packages_dir, ignore_errors=True)
+            try:
+                os.unlink(output_dir / "repo.yaml")
+            except OSError:
+                pass
 
         if not output_dir.exists():
             packages_dir.mkdir(parents=True)

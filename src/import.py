@@ -3,18 +3,23 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import argparse
 import gzip
 import json
 import os
 import sqlite3
 import sys
 
+MOVE_UP = "\033[1A"
+CLEAR_LINE = "\x1b[2K"
+
 conn = sqlite3.connect("data.db")
 c = conn.cursor()
 
+
 c.execute(
     """
-CREATE TABLE IF NOT EXISTS versions
+CREATE TABLE IF NOT EXISTS distributions
 (
 name TEXT NOT NULL,
 version TEXT NOT NULL,
@@ -28,15 +33,42 @@ path TEXT NOT NULL
 
 c.execute(
     """
-CREATE UNIQUE INDEX IF NOT EXISTS name_index ON versions (name, version)
+CREATE UNIQUE INDEX IF NOT EXISTS name_index ON distributions (name, version)
+"""
+)
+
+c.execute(
+    """
+CREATE TABLE IF NOT EXISTS versions
+(
+name TEXT NOT NULL,
+version TEXT NOT NULL
+)
+"""
+)
+
+c.execute(
+    """
+CREATE UNIQUE INDEX IF NOT EXISTS versions_by_name ON versions (name, version)
 """
 )
 
 
-def insert(entries):
+def insert_versions(entries):
     c.executemany(
         """
-    INSERT INTO versions (name, version, requires_dist, requires_python, sha256, path)
+    INSERT INTO versions (name, version)
+    VALUES (?, ?)
+    """,
+        entries,
+    )
+    conn.commit()
+
+
+def insert_distributions(entries):
+    c.executemany(
+        """
+    INSERT INTO distributions (name, version, requires_dist, requires_python, sha256, path)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, version) DO UPDATE SET
     requires_dist = excluded.requires_dist,
@@ -49,30 +81,80 @@ def insert(entries):
     conn.commit()
 
 
-path = sys.argv[1] if len(sys.argv) > 1 else "pypi-export"
+def import_versions(path="pypi-versions"):
+    entries = []
+    i = 0
+    print("importing versions...")
+    print()
+    files = sorted(os.listdir(path))
+    total_lines = 0
+    total_files = len(files)
+    for j, file in enumerate(files):
+        with gzip.open(os.path.join(path, file), "rb") as f:
+            lines = f.readlines()
+            total_lines += len(lines)
+            lines_estimate = total_lines / (j + 1) * total_files
+            for line in lines:
+                i += 1
+                data = json.loads(line)
+                entries.append((data["normalized_name"], data["version"]))
 
-entries = []
-i = 0
-for file in sorted(os.listdir(path)):
-    print(f"importing {file}")
-    with gzip.open(os.path.join(path, file), "rb") as f:
-        for line in f.readlines():
-            i += 1
-            data = json.loads(line)
+                if i % 10000 == 0:
+                    insert_versions(entries)
+                    entries = []
+                    percent = int(i / lines_estimate * 100)
+                    print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
+    insert_versions(entries)
 
-            entries.append(
-                (
-                    data["normalized_name"],
-                    data["version"],
-                    json.dumps(data.get("requires_dist", []), separators=(",", ":")),
-                    data.get("requires_python", ""),
-                    bytearray.fromhex(data.get("sha256_digest", "")),
-                    data["path"],
+
+def import_distributions(path="pypi-export"):
+    entries = []
+    i = 0
+    print("importing metadata...")
+    print()
+    files = sorted(os.listdir(path))
+    total_lines = 0
+    total_files = len(files)
+    for j, file in enumerate(files):
+        with gzip.open(os.path.join(path, file), "rb") as f:
+            lines = f.readlines()
+            total_lines += len(lines)
+            lines_estimate = total_lines / (j + 1) * total_files
+            for line in lines:
+                i += 1
+                data = json.loads(line)
+
+                entries.append(
+                    (
+                        data["normalized_name"],
+                        data["version"],
+                        json.dumps(data.get("requires_dist", []), separators=(",", ":")),
+                        data.get("requires_python", ""),
+                        bytearray.fromhex(data.get("sha256_digest", "")),
+                        data["path"],
+                    )
                 )
-            )
 
-            if i % 5000 == 0:
-                insert(entries)
-                entries = []
-                print(i)
-insert(entries)
+                if i % 10000 == 0:
+                    insert_distributions(entries)
+                    entries = []
+                    percent = int(i / lines_estimate * 100)
+                    print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
+    insert_distributions(entries)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--distributions", action="store_true")
+parser.add_argument("--versions", action="store_true")
+
+args = parser.parse_args()
+
+if not args.versions and not args.distributions:
+    parser.print_help()
+    sys.exit(1)
+
+if args.distributions:
+    import_distributions()
+
+if args.versions:
+    import_versions()

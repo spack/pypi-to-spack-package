@@ -147,13 +147,13 @@ For every requirement / constraint that may apply, we take at most the best 10 m
      AND x.version = y.version
      AND x.packagetype = "bdist_wheel"
      AND y.packagetype = "bdist_wheel"
-     AND y.path NOT LIKE "%any.whl"
+     AND y.path NOT LIKE "%-none-any.whl"
    )
 
    -- Select sdist and universal wheels
    WHERE (
      x.packagetype = "sdist"
-     OR x.path LIKE "%any.whl"
+     OR x.path LIKE "%py3-none-any.whl"
    ) AND y.name IS NULL
    -- AND x.upload_time >= "2024-03-01" -- If you already have a db, set this to last time fetched
 

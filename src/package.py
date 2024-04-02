@@ -74,7 +74,7 @@ class VersionsLookup:
 
     def _query(self, name: str) -> List[pv.Version]:
         # Todo, de-duplicate identical versions e.g. "3.7.0" and "3.7".
-        query = self.cursor.execute("SELECT version FROM version_lookup WHERE name = ?", (name,))
+        query = self.cursor.execute("SELECT version FROM versions WHERE name = ?", (name,))
         return sorted({vv for v, in query if (vv := _acceptable_version(v))})
 
     def _python_versions(self) -> List[pv.Version]:
@@ -533,8 +533,8 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
     query = sqlite_cursor.execute(
         """
         SELECT version, requires_dist, requires_python, sha256, path
-        FROM versions
-        WHERE name = ? AND path LIKE "%py3-none-any.whl"
+        FROM distributions
+        WHERE name = ?
         """,
         (name,),
     )

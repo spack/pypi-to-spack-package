@@ -666,8 +666,9 @@ class Node:
 
 
 def _generate(
-    queue: List[Tuple[str, SpecifierSet, FrozenSet[str], int]], sqlite_cursor: sqlite3.Cursor,
-    no_new_versions: bool = False
+    queue: List[Tuple[str, SpecifierSet, FrozenSet[str], int]],
+    sqlite_cursor: sqlite3.Cursor,
+    no_new_versions: bool = False,
 ):
     visited = set()
     lookup = VersionsLookup(sqlite_cursor)
@@ -807,8 +808,23 @@ def _generate(
             )
 
         # Order by (name ASC, when spec DESC, spec DESC)
+        def when_spec_key(data: Tuple[Spec, Spec, Optional[Marker]]):
+            when_spec = data[1]
+            pythons = when_spec.dependencies("python")
+            parts = (
+                when_spec.name,
+                when_spec.versions,
+                when_spec.variants,
+                when_spec.architecture,
+            )
+            if not pythons:
+                return parts
+            else:
+                python, *_ = pythons
+                return (*parts, python.name, python.versions, python.variants)
+
         node.children.sort(key=lambda x: (x[0]), reverse=True)
-        node.children.sort(key=lambda x: (x[1]), reverse=True)
+        node.children.sort(key=when_spec_key, reverse=True)
         node.children.sort(key=lambda x: (x[0].name))
 
         # Prepend dependencies on Python versions.

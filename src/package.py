@@ -889,9 +889,9 @@ def _print_package(name: str, node: Node, f: io.StringIO):
 
     print("    # BEGIN DEPENDENCIES", file=f)
     if uncommented_lines:
-        print('    with default_args(type="run"):', file=f)
+        print('    with default_args(type=("build", "run")):', file=f)
     elif commented_lines:
-        print('    # with default_args(type="run"):', file=f)
+        print('    # with default_args(type=("build", "run")):', file=f)
 
     for line in uncommented_lines:
         print(f"        {line}", file=f)

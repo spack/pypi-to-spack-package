@@ -4,6 +4,7 @@ import ast
 import os
 import re
 import sys
+from typing import Set
 
 import spack.util.naming as nm
 
@@ -52,6 +53,17 @@ for dir in sorted(os.listdir(repo_in)):
         src = f.read()
 
     lines = src.split("\n")
+
+    # keep bits that are between `# <<< ...` and # ... >>>` comments:
+    lines_to_keep: Set[int] = set()
+    start = None
+    start_regex, end_regex = re.compile(r"\s*# <<<"), re.compile(r"\s*# .*>>>")
+    for i, line in enumerate(lines):
+        if start_regex.match(line):
+            start = i
+        elif start is not None and end_regex.match(line):
+            lines_to_keep.update(range(start, i + 1))
+
     tree = ast.parse(src)
     clasname = nm.mod_to_class(dir)
 
@@ -63,13 +75,12 @@ for dir in sorted(os.listdir(repo_in)):
         print(f"failed to find class {clasname} in {out_package}", file=sys.stderr)
         continue
 
-    lines_to_delete = set()
+    lines_to_delete: Set[int] = set()
 
     for node in n.body:
         # delete with expressions and loops
         if isinstance(node, (ast.With, ast.For)):
-            for i in range(node.lineno - 1, node.end_lineno):
-                lines_to_delete.add(i)
+            lines_to_delete.update(range(node.lineno - 1, node.end_lineno))
             continue
 
         # delete build instructions
@@ -86,11 +97,9 @@ for dir in sorted(os.listdir(repo_in)):
                 and d.func.id in ("run_before", "run_after")
                 for d in node.decorator_list
             ):
-                for i in range(node.lineno - 1, node.end_lineno):
-                    lines_to_delete.add(i)
+                lines_to_delete.update(range(node.lineno - 1, node.end_lineno))
                 for d in node.decorator_list:
-                    for i in range(d.lineno - 1, d.end_lineno):
-                        lines_to_delete.add(i)
+                    lines_to_delete.update(range(d.lineno - 1, d.end_lineno))
             continue
 
         if not isinstance(node, ast.Expr):
@@ -123,7 +132,7 @@ for dir in sorted(os.listdir(repo_in)):
                 except OSError:
                     pass
 
-    delete = sorted(lines_to_delete, reverse=True)
+    delete = sorted(lines_to_delete - lines_to_keep, reverse=True)
 
     for i in delete:
         del lines[i]

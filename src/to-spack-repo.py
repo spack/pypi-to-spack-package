@@ -132,6 +132,13 @@ for dir in sorted(os.listdir(repo_in)):
                 except OSError:
                     pass
 
+    # delete lines that are only comments or empty
+    for line in range(min(lines_to_delete), len(lines)):
+        stripped = lines[line].strip()
+        if not stripped or stripped.startswith("#"):
+            lines_to_delete.add(line)
+
+    # preserve special comments
     delete = sorted(lines_to_delete - lines_to_keep, reverse=True)
 
     for i in delete:

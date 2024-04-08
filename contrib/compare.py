@@ -1,985 +1,14 @@
-import spack.repo
-
-packages = [
-    "py-about-time",
-    "py-accelerate",
-    "py-accessible-pygments",
-    "py-acme-tiny",
-    "py-adal",
-    "py-addict",
-    "py-aenum",
-    "py-affine",
-    "py-ahpy",
-    "py-aiofiles",
-    "py-aiohttp-cors",
-    "py-aioitertools",
-    "py-aioredis",
-    "py-aiosignal",
-    "py-aiosqlite",
-    "py-alabaster",
-    "py-alpaca-eval",
-    "py-alpaca-farm",
-    "py-altgraph",
-    "py-ampltools",
-    "py-aniso8601",
-    "py-anndata",
-    "py-annexremote",
-    "py-ansi2html",
-    "py-ansimarkup",
-    "py-anytree",
-    "py-apache-libcloud",
-    "py-apeye",
-    "py-apeye-core",
-    "py-apipkg",
-    "py-appdirs",
-    "py-applicationinsights",
-    "py-appnope",
-    "py-archspec",
-    "py-arcp",
-    "py-argh",
-    "py-art",
-    "py-arviz",
-    "py-asdf-standard",
-    "py-asdf-transform-schemas",
-    "py-asdf-unit-schemas",
-    "py-asgiref",
-    "py-asn1crypto",
-    "py-aspy-yaml",
-    "py-asserts",
-    "py-astor",
-    "py-astpretty",
-    "py-asttokens",
-    "py-astunparse",
-    "py-async-generator",
-    "py-async-timeout",
-    "py-asynctest",
-    "py-attmap",
-    "py-attrs",
-    "py-auditwheel",
-    "py-autodocsumm",
-    "py-automat",
-    "py-autoray",
-    "py-awkward0",
-    "py-azure-batch",
-    "py-azure-cli",
-    "py-azure-cli-command-modules-nspkg",
-    "py-azure-cli-core",
-    "py-azure-cli-nspkg",
-    "py-azure-cli-telemetry",
-    "py-azure-common",
-    "py-azure-core",
-    "py-azure-cosmos",
-    "py-azure-datalake-store",
-    "py-azure-functions-devops-build",
-    "py-azure-graphrbac",
-    "py-azure-identity",
-    "py-azure-keyvault",
-    "py-azure-keyvault-certificates",
-    "py-azure-keyvault-keys",
-    "py-azure-keyvault-nspkg",
-    "py-azure-keyvault-secrets",
-    "py-azure-loganalytics",
-    "py-azure-mgmt-advisor",
-    "py-azure-mgmt-apimanagement",
-    "py-azure-mgmt-appconfiguration",
-    "py-azure-mgmt-applicationinsights",
-    "py-azure-mgmt-authorization",
-    "py-azure-mgmt-batch",
-    "py-azure-mgmt-batchai",
-    "py-azure-mgmt-billing",
-    "py-azure-mgmt-botservice",
-    "py-azure-mgmt-cdn",
-    "py-azure-mgmt-cognitiveservices",
-    "py-azure-mgmt-compute",
-    "py-azure-mgmt-consumption",
-    "py-azure-mgmt-containerinstance",
-    "py-azure-mgmt-containerregistry",
-    "py-azure-mgmt-containerservice",
-    "py-azure-mgmt-core",
-    "py-azure-mgmt-cosmosdb",
-    "py-azure-mgmt-datalake-analytics",
-    "py-azure-mgmt-datalake-nspkg",
-    "py-azure-mgmt-datamigration",
-    "py-azure-mgmt-deploymentmanager",
-    "py-azure-mgmt-devtestlabs",
-    "py-azure-mgmt-dns",
-    "py-azure-mgmt-eventgrid",
-    "py-azure-mgmt-eventhub",
-    "py-azure-mgmt-hdinsight",
-    "py-azure-mgmt-imagebuilder",
-    "py-azure-mgmt-iotcentral",
-    "py-azure-mgmt-iothub",
-    "py-azure-mgmt-iothubprovisioningservices",
-    "py-azure-mgmt-keyvault",
-    "py-azure-mgmt-kusto",
-    "py-azure-mgmt-loganalytics",
-    "py-azure-mgmt-managedservices",
-    "py-azure-mgmt-managementgroups",
-    "py-azure-mgmt-maps",
-    "py-azure-mgmt-marketplaceordering",
-    "py-azure-mgmt-media",
-    "py-azure-mgmt-monitor",
-    "py-azure-mgmt-msi",
-    "py-azure-mgmt-netapp",
-    "py-azure-mgmt-network",
-    "py-azure-mgmt-nspkg",
-    "py-azure-mgmt-policyinsights",
-    "py-azure-mgmt-privatedns",
-    "py-azure-mgmt-rdbms",
-    "py-azure-mgmt-recoveryservices",
-    "py-azure-mgmt-recoveryservicesbackup",
-    "py-azure-mgmt-redhatopenshift",
-    "py-azure-mgmt-redis",
-    "py-azure-mgmt-relay",
-    "py-azure-mgmt-reservations",
-    "py-azure-mgmt-resource",
-    "py-azure-mgmt-search",
-    "py-azure-mgmt-security",
-    "py-azure-mgmt-servicebus",
-    "py-azure-mgmt-servicefabric",
-    "py-azure-mgmt-signalr",
-    "py-azure-mgmt-sql",
-    "py-azure-mgmt-sqlvirtualmachine",
-    "py-azure-mgmt-storage",
-    "py-azure-mgmt-trafficmanager",
-    "py-azure-mgmt-web",
-    "py-azure-multiapi-storage",
-    "py-azure-nspkg",
-    "py-azure-storage-blob",
-    "py-azure-storage-common",
-    "py-azure-storage-nspkg",
-    "py-azureml-automl-core",
-    "py-azureml-core",
-    "py-azureml-dataprep",
-    "py-azureml-dataset-runtime",
-    "py-azureml-pipeline",
-    "py-azureml-pipeline-core",
-    "py-azureml-pipeline-steps",
-    "py-azureml-sdk",
-    "py-azureml-telemetry",
-    "py-azureml-train",
-    "py-azureml-train-automl-client",
-    "py-azureml-train-core",
-    "py-azureml-train-restclients-hyperdrive",
-    "py-backoff",
-    "py-backports-abc",
-    "py-backports-entry-points-selectable",
-    "py-backports-os",
-    "py-backports-weakref",
-    "py-bagit",
-    "py-bagit-profile",
-    "py-bash-kernel",
-    "py-batchspawner",
-    "py-bdbag",
-    "py-beartype",
-    "py-biobb-common",
-    "py-biobb-io",
-    "py-biobb-model",
-    "py-biobb-structure-checking",
-    "py-biobb-structure-utils",
-    "py-bioblend",
-    "py-boltons",
-    "py-boto",
-    "py-branca",
-    "py-bravado",
-    "py-cachecontrol",
-    "py-cached-property",
-    "py-cachetools",
-    "py-cachy",
-    "py-cairosvg",
-    "py-callmonitor",
-    "py-calver",
-    "py-catkin-pkg",
-    "py-cattrs",
-    "py-certifi",
-    "py-cffconvert",
-    "py-cfgv",
-    "py-chainmap",
-    "py-chardet",
-    "py-chart-studio",
-    "py-cheap-repr",
-    "py-ci-info",
-    "py-circus",
-    "py-citeproc-py",
-    "py-clean-text",
-    "py-click",
-    "py-click-plugins",
-    "py-cligj",
-    "py-clikit",
-    "py-climate",
-    "py-cloudauthz",
-    "py-cloudbridge",
-    "py-cloudpickle",
-    "py-cmaes",
-    "py-cmyt",
-    "py-colabtools",
-    "py-colorama",
-    "py-colorcet",
-    "py-colorio",
-    "py-colorlover",
-    "py-colorspacious",
-    "py-comm",
-    "py-commonmark",
-    "py-conda-inject",
-    "py-conda-souschef",
-    "py-consolekit",
-    "py-constantly",
-    "py-contextlib2",
-    "py-convertdate",
-    "py-cookiecutter",
-    "py-corner",
-    "py-crashtest",
-    "py-croniter",
-    "py-crossmap",
-    "py-css-parser",
-    "py-cssselect2",
-    "py-cssutils",
-    "py-current",
-    "py-currentscape",
-    "py-custom-inherit",
-    "py-cwl-utils",
-    "py-cycler",
-    "py-dalib",
-    "py-dask-glm",
-    "py-dask-sphinx-theme",
-    "py-dataclasses-json",
-    "py-datalad-metadata-model",
-    "py-dateutils",
-    "py-dbfread",
-    "py-decorator",
-    "py-deepdiff",
-    "py-deephyper",
-    "py-deepsig",
-    "py-defusedxml",
-    "py-deprecated",
-    "py-deprecation",
-    "py-deprecation-alias",
-    "py-descartes",
-    "py-dict2css",
-    "py-dictdiffer",
-    "py-diskcache",
-    "py-dist-meta",
-    "py-distlib",
-    "py-distro",
-    "py-dnspython",
-    "py-docstring-parser",
-    "py-docstring-to-markdown",
-    "py-docutils",
-    "py-docutils-stubs",
-    "py-doit",
-    "py-dom-toml",
-    "py-dominate",
-    "py-dotmap",
-    "py-dunamai",
-    "py-dynaconf",
-    "py-edam-ontology",
-    "py-editables",
-    "py-einops",
-    "py-elasticsearch-dsl",
-    "py-email-validator",
-    "py-entrypoints",
-    "py-enum-tools",
-    "py-etelemetry",
-    "py-etils",
-    "py-exceptiongroup",
-    "py-execnet",
-    "py-executing",
-    "py-exifread",
-    "py-expecttest",
-    "py-extension-helpers",
-    "py-extras",
-    "py-fabric",
-    "py-fastapi-utils",
-    "py-fastdownload",
-    "py-fasteners",
-    "py-fastjsonschema",
-    "py-fastprogress",
-    "py-filecheck",
-    "py-filetype",
-    "py-find-libpython",
-    "py-fixtures",
-    "py-flake8-import-order",
-    "py-flaky",
-    "py-flask-babel",
-    "py-flask-cors",
-    "py-flask-paginate",
-    "py-flask-sqlalchemy",
-    "py-flatbuffers",
-    "py-flatten-dict",
-    "py-flawfinder",
-    "py-flit",
-    "py-flit-core",
-    "py-flit-scm",
-    "py-folium",
-    "py-ford",
-    "py-formulaic",
-    "py-fortls",
-    "py-fprettify",
-    "py-fqdn",
-    "py-fraction",
-    "py-fuzzywuzzy",
-    "py-galaxy-containers",
-    "py-galaxy-job-metrics",
-    "py-galaxy-objectstore",
-    "py-galaxy-tool-util",
-    "py-galaxy-util",
-    "py-galaxy2cwl",
-    "py-gcovr",
-    "py-generateds",
-    "py-genshi",
-    "py-geographiclib",
-    "py-geopy",
-    "py-ghp-import",
-    "py-gidgethub",
-    "py-gidgetlab",
-    "py-google",
-    "py-google-api-core",
-    "py-google-apitools",
-    "py-google-auth-httplib2",
-    "py-google-auth-oauthlib",
-    "py-google-cloud-core",
-    "py-google-cloud-storage",
-    "py-google-reauth",
-    "py-google-resumable-media",
-    "py-googledrivedownloader",
-    "py-gradio-client",
-    "py-graphene",
-    "py-graphlib-backport",
-    "py-graphql-core",
-    "py-graphql-relay",
-    "py-graphql-ws",
-    "py-gravity",
-    "py-griddataformats",
-    "py-griffe",
-    "py-grpcio-status",
-    "py-gunicorn",
-    "py-h2",
-    "py-h5glance",
-    "py-h5io",
-    "py-h5netcdf",
-    "py-h5sh",
-    "py-handy-archives",
-    "py-hatch-fancy-pypi-readme",
-    "py-hatch-jupyter-builder",
-    "py-hatch-nodejs-version",
-    "py-hatch-requirements-txt",
-    "py-hatch-vcs",
-    "py-heapdict",
-    "py-hep-ml",
-    "py-hepdata-converter",
-    "py-hepunits",
-    "py-hist",
-    "py-hjson",
-    "py-hpack",
-    "py-hstspreload",
-    "py-htmlgen",
-    "py-httpcore",
-    "py-httplib2",
-    "py-hvac",
-    "py-hydra-core",
-    "py-hypercorn",
-    "py-hyperframe",
-    "py-ics",
-    "py-identify",
-    "py-idna",
-    "py-igor2",
-    "py-imagesize",
-    "py-immutabledict",
-    "py-importlib-metadata",
-    "py-importlib-resources",
-    "py-incremental",
-    "py-inflect",
-    "py-iniconfig",
-    "py-inquirer",
-    "py-inquirerpy",
-    "py-intensity-normalization",
-    "py-interface-meta",
-    "py-invoke",
-    "py-ipyevents",
-    "py-ipyparallel",
-    "py-ipython-genutils",
-    "py-ipyvue",
-    "py-ipyvuetify",
-    "py-irpf90",
-    "py-iso8601",
-    "py-isoduration",
-    "py-iterative-stats",
-    "py-itolapi",
-    "py-jacobi",
-    "py-jamo",
-    "py-jaraco-classes",
-    "py-jaraco-functools",
-    "py-javaproperties",
-    "py-jedi",
-    "py-jeepney",
-    "py-jinja2-cli",
-    "py-jmespath",
-    "py-joblib",
-    "py-jprops",
-    "py-jraph",
-    "py-json-get",
-    "py-json5",
-    "py-jsonargparse",
-    "py-jsonpath-ng",
-    "py-jsonpickle",
-    "py-jsonref",
-    "py-jupyter-events",
-    "py-jupyter-lsp",
-    "py-jupyter-server-mathjax",
-    "py-jupyter-server-proxy",
-    "py-jupyter-server-terminals",
-    "py-jupyter-telemetry",
-    "py-jupyterlab-server",
-    "py-jupyterlab-widgets",
-    "py-keras2onnx",
-    "py-keyrings-alt",
-    "py-kmodes",
-    "py-knack",
-    "py-kt-legacy",
-    "py-langcodes",
-    "py-lark-parser",
-    "py-lazy-loader",
-    "py-ldap3",
-    "py-lfpykit",
-    "py-lhsmdu",
-    "py-libconf",
-    "py-lightning-api-access",
-    "py-lightning-cloud",
-    "py-lightning-fabric",
-    "py-linear-operator",
-    "py-linecache2",
-    "py-linkify-it-py",
-    "py-lizard",
-    "py-logmuse",
-    "py-looseversion",
-    "py-lzstring",
-    "py-macholib",
-    "py-machotools",
-    "py-make",
-    "py-mapclassify",
-    "py-markdown2",
-    "py-markov-clustering",
-    "py-marshmallow",
-    "py-matminer",
-    "py-matplotlib-scalebar",
-    "py-mda-xdrlib",
-    "py-mdurl",
-    "py-meautility",
-    "py-mercantile",
-    "py-mergedeep",
-    "py-meshio",
-    "py-metpy",
-    "py-metric-learn",
-    "py-mffpy",
-    "py-mido",
-    "py-mike",
-    "py-minio",
-    "py-minrpc",
-    "py-mistletoe",
-    "py-mkdocs",
-    "py-mkdocs-autorefs",
-    "py-mkdocs-material",
-    "py-mkdocs-material-extensions",
-    "py-mkdocstrings",
-    "py-mkdocstrings-python",
-    "py-mmtf-python",
-    "py-model-index",
-    "py-monkeytype",
-    "py-monotonic",
-    "py-motor",
-    "py-mpldock",
-    "py-mplhep",
-    "py-mplhep-data",
-    "py-mrcfile",
-    "py-msal",
-    "py-msgpack-numpy",
-    "py-msrest",
-    "py-msrestazure",
-    "py-multipledispatch",
-    "py-munkres",
-    "py-mutagen",
-    "py-mypy-extensions",
-    "py-myst-parser",
-    "py-namex",
-    "py-nara-wpe",
-    "py-natsort",
-    "py-nbqa",
-    "py-nbstripout",
-    "py-nbval",
-    "py-ncbi-genome-download",
-    "py-ndindex",
-    "py-nest-asyncio",
-    "py-netaddr",
-    "py-neurokit2",
-    "py-neurora",
-    "py-nexus-sdk",
-    "py-nitransforms",
-    "py-node-semver",
-    "py-nose",
-    "py-notebook-shim",
-    "py-npx",
-    "py-ntlm-auth",
-    "py-ntplib",
-    "py-num2words",
-    "py-numdifftools",
-    "py-numpy-groupies",
-    "py-odc-geo",
-    "py-ogb",
-    "py-onnxconverter-common",
-    "py-ont-fast5-api",
-    "py-openapi-schema-pydantic",
-    "py-opencensus",
-    "py-openmim",
-    "py-openpmd-validator",
-    "py-optax",
-    "py-optuna",
-    "py-orbax-checkpoint",
-    "py-oslo-config",
-    "py-oslo-i18n",
-    "py-outdated",
-    "py-overrides",
-    "py-owlrl",
-    "py-oyaml",
-    "py-pacifica-downloader",
-    "py-pacifica-namespace",
-    "py-pacifica-uploader",
-    "py-packaging",
-    "py-palettable",
-    "py-pamela",
-    "py-pandas-stubs",
-    "py-papermill",
-    "py-paralleltask",
-    "py-param",
-    "py-parameterized",
-    "py-parse-type",
-    "py-parsley",
-    "py-parso",
-    "py-partd",
-    "py-paste",
-    "py-pastedeploy",
-    "py-pastel",
-    "py-patool",
-    "py-pbr",
-    "py-pdm-pep517",
-    "py-pdoc3",
-    "py-pebble",
-    "py-pem",
-    "py-pep517",
-    "py-pep8",
-    "py-pep8-naming",
-    "py-petastorm",
-    "py-pfzy",
-    "py-pgzip",
-    "py-phonenumbers",
-    "py-pickleshare",
-    "py-pint-xarray",
-    "py-pipdeptree",
-    "py-piper",
-    "py-pkginfo",
-    "py-pkgutil-resolve-name",
-    "py-plac",
-    "py-platformdirs",
-    "py-plotext",
-    "py-plum-dispatch",
-    "py-pockets",
-    "py-poetry-core",
-    "py-poetry-dynamic-versioning",
-    "py-poetry-plugin-tweak-dependencies-version",
-    "py-pooch",
-    "py-portend",
-    "py-portpicker",
-    "py-poyo",
-    "py-pprintpp",
-    "py-priority",
-    "py-profilehooks",
-    "py-proto-plus",
-    "py-protoc-gen-swagger",
-    "py-prwlock",
-    "py-psij-python",
-    "py-ptyprocess",
-    "py-pulp",
-    "py-pure-eval",
-    "py-py",
-    "py-py-tes",
-    "py-py4j",
-    "py-pyaml",
-    "py-pyasn1",
-    "py-pyasn1-modules",
-    "py-pybtex-docutils",
-    "py-pycm",
-    "py-pyct",
-    "py-pydantic-tes",
-    "py-pydap",
-    "py-pydata-sphinx-theme",
-    "py-pydeface",
-    "py-pydeprecate",
-    "py-pydevtool",
-    "py-pydocstyle",
-    "py-pyedr",
-    "py-pyem",
-    "py-pyeventsystem",
-    "py-pygdbmi",
-    "py-pygments",
-    "py-pyisemail",
-    "py-pyjwt",
-    "py-pykml",
-    "py-pylev",
-    "py-pymatreader",
-    "py-pymc3",
-    "py-pymdown-extensions",
-    "py-pymysql",
-    "py-pynpm",
-    "py-pynrrd",
-    "py-pynvml",
-    "py-pyparsing",
-    "py-pypinyin",
-    "py-pypng",
-    "py-pyproject-hooks",
-    "py-pyproject-metadata",
-    "py-pyproject-parser",
-    "py-pyqt-builder",
-    "py-pyquaternion",
-    "py-pyro-api",
-    "py-pyro-ppl",
-    "py-pyrr",
-    "py-pyserial",
-    "py-pyspellchecker",
-    "py-pystac",
-    "py-pystac-client",
-    "py-pytaridx",
-    "py-pytest-aiohttp",
-    "py-pytest-arraydiff",
-    "py-pytest-astropy",
-    "py-pytest-astropy-header",
-    "py-pytest-benchmark",
-    "py-pytest-cpp",
-    "py-pytest-datadir",
-    "py-pytest-doctestplus",
-    "py-pytest-fail-slow",
-    "py-pytest-filter-subpackage",
-    "py-pytest-metadata",
-    "py-pytest-mypy",
-    "py-pytest-openfiles",
-    "py-pytest-parallel",
-    "py-pytest-pylint",
-    "py-pytest-qt",
-    "py-pytest-random-order",
-    "py-pytest-remotedata",
-    "py-pytest-runner",
-    "py-pytest-subprocess",
-    "py-pytest-timeout",
-    "py-pytest-workflow",
-    "py-python-benedict",
-    "py-python-editor",
-    "py-python-fsutil",
-    "py-python-jose",
-    "py-python-markdown-math",
-    "py-python-memcached",
-    "py-python-ptrace",
-    "py-python-sotools",
-    "py-python-swiftclient",
-    "py-python-xlib",
-    "py-pytimeparse",
-    "py-pytoml",
-    "py-pyts",
-    "py-pytz",
-    "py-pyupgrade",
-    "py-pyviz-comms",
-    "py-pyvolve",
-    "py-pyxlsb",
-    "py-pyyaml-env-tag",
-    "py-qiskit-ibm-provider",
-    "py-qpsolvers",
-    "py-qsymm",
-    "py-quantum-blackbird",
-    "py-quantum-xir",
-    "py-quart",
-    "py-querystring-parser",
-    "py-questionary",
-    "py-qutip-qip",
-    "py-rapidfuzz-capi",
-    "py-rasterstats",
-    "py-ratelim",
-    "py-ratelimiter",
-    "py-raven",
-    "py-rdflib-jsonld",
-    "py-reacton",
-    "py-readchar",
-    "py-redis",
-    "py-refgenconf",
-    "py-refgenie",
-    "py-reportseff",
-    "py-requests-cache",
-    "py-requests-file",
-    "py-requests-ntlm",
-    "py-requests-toolbelt",
-    "py-requests-unixsocket",
-    "py-requirements-parser",
-    "py-reretry",
-    "py-resolvelib",
-    "py-responses",
-    "py-resultsfile",
-    "py-retry",
-    "py-rfc3339-validator",
-    "py-rfc3986",
-    "py-rfc3986-validator",
-    "py-rich-click",
-    "py-rise",
-    "py-robocrys",
-    "py-robotframework",
-    "py-rocrate",
-    "py-roifile",
-    "py-rosdep",
-    "py-rosdistro",
-    "py-rosinstall-generator",
-    "py-rospkg",
-    "py-routes",
-    "py-rply",
-    "py-rst2pdf",
-    "py-ruamel-yaml-jinja2",
-    "py-rx",
-    "py-scanpy",
-    "py-schema",
-    "py-scooby",
-    "py-screed",
-    "py-seekpath",
-    "py-semantic-version",
-    "py-semver",
-    "py-send2trash",
-    "py-serpent",
-    "py-setupmeta",
-    "py-setuptools-rust",
-    "py-shellescape",
-    "py-shellingham",
-    "py-shippinglabel",
-    "py-shtab",
-    "py-simpervisor",
-    "py-simpleeval",
-    "py-singledispatchmethod",
-    "py-six",
-    "py-slicer",
-    "py-smartypants",
-    "py-smmap",
-    "py-snakemake-executor-plugin-azure-batch",
-    "py-snakemake-executor-plugin-cluster-generic",
-    "py-snakemake-executor-plugin-cluster-sync",
-    "py-snakemake-executor-plugin-drmaa",
-    "py-snakemake-executor-plugin-flux",
-    "py-snakemake-executor-plugin-googlebatch",
-    "py-snakemake-executor-plugin-kubernetes",
-    "py-snakemake-executor-plugin-slurm",
-    "py-snakemake-executor-plugin-slurm-jobstep",
-    "py-snakemake-executor-plugin-tes",
-    "py-snakemake-interface-executor-plugins",
-    "py-snakemake-interface-storage-plugins",
-    "py-snakemake-storage-plugin-azure",
-    "py-snakemake-storage-plugin-fs",
-    "py-snakemake-storage-plugin-ftp",
-    "py-snakemake-storage-plugin-http",
-    "py-snakemake-storage-plugin-s3",
-    "py-snakemake-storage-plugin-sftp",
-    "py-snakemake-storage-plugin-zenodo",
-    "py-snoop",
-    "py-snowballstemmer",
-    "py-snuggs",
-    "py-sobol-seq",
-    "py-social-auth-core",
-    "py-sortedcollections",
-    "py-sortedcontainers",
-    "py-soupsieve",
-    "py-spacy-legacy",
-    "py-spacy-loggers",
-    "py-sparse",
-    "py-spectral",
-    "py-spgl1",
-    "py-sphinx-autodoc-typehints",
-    "py-sphinx-book-theme",
-    "py-sphinx-copybutton",
-    "py-sphinx-design",
-    "py-sphinx-immaterial",
-    "py-sphinx-jinja2-compat",
-    "py-sphinx-rtd-dark-mode",
-    "py-sphinx-toolbox",
-    "py-sphinxcontrib-applehelp",
-    "py-sphinxcontrib-devhelp",
-    "py-sphinxcontrib-htmlhelp",
-    "py-sphinxcontrib-jsmath",
-    "py-sphinxcontrib-napoleon",
-    "py-sphinxcontrib-qthelp",
-    "py-sphinxcontrib-trio",
-    "py-sphinxcontrib-websupport",
-    "py-sphobjinv",
-    "py-sqlalchemy-stubs",
-    "py-sqlparse",
-    "py-sshtunnel",
-    "py-starlette",
-    "py-starsessions",
-    "py-strawberryfields",
-    "py-stui",
-    "py-subword-nmt",
-    "py-supervisor",
-    "py-svgpathtools",
-    "py-svgutils",
-    "py-swagger-spec-validator",
-    "py-symfit",
-    "py-tblib",
-    "py-tbparse",
-    "py-tempita",
-    "py-tempora",
-    "py-tenacity",
-    "py-tensorboard-plugin-wit",
-    "py-tensorflow-metadata",
-    "py-tensorly",
-    "py-testfixtures",
-    "py-testpath",
-    "py-testresources",
-    "py-testscenarios",
-    "py-testtools",
-    "py-text-unidecode",
-    "py-textwrap3",
-    "py-thewalrus",
-    "py-thop",
-    "py-threadpoolctl",
-    "py-throttler",
-    "py-tidynamics",
-    "py-tinycss2",
-    "py-tokenize-rt",
-    "py-tomli",
-    "py-tomli-w",
-    "py-tomlkit",
-    "py-torch-harmonics",
-    "py-torchdiffeq",
-    "py-toytree",
-    "py-tree-math",
-    "py-treelib",
-    "py-trojanzoo-sphinx-theme",
-    "py-trove-classifiers",
-    "py-tuswsgi",
-    "py-typer",
-    "py-types-dataclasses",
-    "py-types-pkg-resources",
-    "py-types-psutil",
-    "py-types-python-dateutil",
-    "py-types-pytz",
-    "py-types-requests",
-    "py-types-setuptools",
-    "py-types-typed-ast",
-    "py-types-urllib3",
-    "py-typesentry",
-    "py-typeshed-client",
-    "py-typing-inspect",
-    "py-typish",
-    "py-tzdata",
-    "py-ubiquerg",
-    "py-uc-micro-py",
-    "py-uhi",
-    "py-unidecode",
-    "py-unyt",
-    "py-update-checker",
-    "py-uproot3",
-    "py-uproot3-methods",
-    "py-uri-template",
-    "py-uritemplate",
-    "py-url-normalize",
-    "py-urllib3-secure-extra",
-    "py-userpath",
-    "py-uvicorn",
-    "py-vcrpy",
-    "py-vcstool",
-    "py-vcstools",
-    "py-vector",
-    "py-vector-quantize-pytorch",
-    "py-vermin",
-    "py-versioneer-518",
-    "py-verspec",
-    "py-vine",
-    "py-vsts",
-    "py-waitress",
-    "py-wasabi",
-    "py-wcwidth",
-    "py-webargs",
-    "py-webcolors",
-    "py-webencodings",
-    "py-webob",
-    "py-whey",
-    "py-whey-pth",
-    "py-whichcraft",
-    "py-whoosh",
-    "py-wincertstore",
-    "py-wurlitzer",
-    "py-xanadu-cloud-client",
-    "py-xenv",
-    "py-xhistogram",
-    "py-xlrd",
-    "py-xlsxwriter",
-    "py-xlwt",
-    "py-xmltodict",
-    "py-xskillscore",
-    "py-xyzservices",
-    "py-yacman",
-    "py-yacs",
-    "py-yapf",
-    "py-yq",
-    "py-yte",
-    "py-zc-buildout",
-    "py-zict",
-    "py-zipp",
-    "py-zipstream-new",
-    "py-zope-event",
-]
-
+import argparse
 import json
+from collections import defaultdict
 from typing import Dict, List
 
+import spack.paths
+import spack.repo
 from spack.dependency import Dependency
 from spack.deptypes import LINK, RUN
 from spack.spec import Spec
-from spack.version import StandardVersion
-
-# possible_versions: Dict[str, Dict[StandardVersion, Dict[str, List[StandardVersion]]]] = {}
-
-# for name in packages:
-#     s = Spec(name)
-#     s._mark_concrete()
-#     pkg = s.package
-#     v: StandardVersion
-#     when: Spec
-#     edge: Dict[str, Dependency]
-
-#     possible_versions[name] = {}
-
-#     for v in pkg.versions:
-#         deps_for_version: Dict[str, List[StandardVersion]] = {}
-
-#         for when, edge in pkg.dependencies.items():
-#             if not v.satisfies(when.versions):
-#                 continue
-#             for dep_name, dep in edge.items():
-#                 if dep.depflag & (LINK | RUN) == 0:
-#                     continue
-#                 if spack.repo.PATH.is_virtual(dep_name):
-#                     continue
-#                 child = Spec(dep_name)
-#                 child._mark_concrete()
-#                 if dep_name not in deps_for_version:
-#                     deps_for_version[dep_name] = list(child.package.versions.keys())
-#                 # filter matching versions
-#                 deps_for_version[dep_name] = [
-#                     v for v in deps_for_version[dep_name] if v.satisfies(dep.spec.versions)
-#                 ]
-
-#         possible_versions[name][str(v)] = {
-#             dep_name: [str(w) for w in versions] for dep_name, versions in deps_for_version.items()
-#         }
-
-
-# print(json.dumps(possible_versions, sort_keys=True))
-
-
-a = json.load(open("before.json"))
-b = json.load(open("after.json"))
-
-from spack.version import VersionList, VersionRange
+from spack.version import StandardVersion, VersionList, VersionRange
 
 
 def to_version_list(versions, all_versions):
@@ -1002,94 +31,149 @@ def to_version_list(versions, all_versions):
     return VersionList(vlist)
 
 
-from collections import defaultdict
+parser = argparse.ArgumentParser()
+sub = parser.add_subparsers(required=True, dest="command")
+sub.add_parser("before", help="Generate before.json (checkout commit before changes yourself)")
+sub.add_parser("after", help="Generate after.json (checkout commit after changes yourself)")
+sub.add_parser("diff", help="Diff before.json and after.json")
 
-inf_versions = {StandardVersion.from_string(x) for x in ("develop", "main", "master")}
+args = parser.parse_args()
 
-for name in packages:
-    if name not in a or name not in b:
-        continue
-    a_pkg = a[name]
-    b_pkg = b[name]
+if args.command in ("before", "after"):
+    possible_versions: Dict[str, Dict[StandardVersion, Dict[str, List[StandardVersion]]]] = {}
 
-    versions_in_a = set(StandardVersion.from_string(x) for x in a_pkg.keys()) - inf_versions
-    versions_in_b = set(StandardVersion.from_string(x) for x in b_pkg.keys()) - inf_versions
+    for name in spack.repo.PATH.all_package_names():
+        s = Spec(name)
+        s._mark_concrete()
+        pkg = s.package
+        v: StandardVersion
+        when: Spec
+        edge: Dict[str, Dependency]
 
-    change_to_version = defaultdict(list)
+        possible_versions[name] = {}
 
-    if versions_in_a != versions_in_b:
-        a_min_b = versions_in_a - versions_in_b
-        b_min_a = versions_in_b - versions_in_a
-        if a_min_b:
-            change_to_version[f"removed versions {', '.join(str(x) for x in sorted(a_min_b))}"] = (
-                True
-            )
-        if b_min_a:
-            change_to_version[f"added versions {', '.join(str(x) for x in sorted(b_min_a))}"] = (
-                True
-            )
+        for v in pkg.versions:
+            deps_for_version: Dict[str, List[StandardVersion]] = {}
 
-    for v in sorted(versions_in_a & versions_in_b):
-        deps_a = next(val for key, val in a_pkg.items() if StandardVersion.from_string(key) == v)
-        deps_b = next(val for key, val in b_pkg.items() if StandardVersion.from_string(key) == v)
+            for when, edge in pkg.dependencies.items():
+                if not v.satisfies(when.versions):
+                    continue
+                for dep_name, dep in edge.items():
+                    if dep.depflag & (LINK | RUN) == 0:
+                        continue
+                    if spack.repo.PATH.is_virtual(dep_name):
+                        continue
+                    child = Spec(dep_name)
+                    child._mark_concrete()
+                    if dep_name not in deps_for_version:
+                        deps_for_version[dep_name] = list(child.package.versions.keys())
+                    # filter matching versions
+                    deps_for_version[dep_name] = [
+                        v for v in deps_for_version[dep_name] if v.satisfies(dep.spec.versions)
+                    ]
 
-        deps_in_a = set(deps_a.keys())
-        deps_in_b = set(deps_b.keys())
+            possible_versions[name][str(v)] = {
+                dep_name: [str(w) for w in versions]
+                for dep_name, versions in deps_for_version.items()
+            }
 
-        changes_for_version = []
+    with open(f"{args.command}.json", "w") as f:
+        json.dump(possible_versions, f, sort_keys=True)
 
-        if deps_in_a != deps_in_b:
-            if deps_in_a - deps_in_b - {"py-setuptools"}:
-                changes_for_version.append(
-                    f"deleted {', '.join(f'^{d}' for d in sorted(deps_in_a - deps_in_b))}"
-                )
-            if deps_in_b - deps_in_a:
-                changes_for_version.append(
-                    f"added {', '.join(f'^{d}' for d in sorted(deps_in_b - deps_in_a))}"
-                )
+elif args.command == "diff":
+    a = json.load(open("before.json"))
+    b = json.load(open("after.json"))
 
-        for dep in sorted(deps_in_a & deps_in_b):
-            a_v = set(StandardVersion.from_string(v) for v in deps_a[dep])
-            b_v = set(StandardVersion.from_string(v) for v in deps_b[dep])
+    inf_versions = {StandardVersion.from_string(x) for x in ("develop", "main", "master")}
 
-            if a_v != b_v:
-                all_versions = sorted(spack.repo.PATH.get_pkg_class(dep).versions.keys())
-                a_min_b = sorted(a_v - b_v)
-                if a_min_b:
-                    try:
-                        version_list = to_version_list(a_min_b, all_versions)
-                    except Exception:
-                        version_list = ",".join(str(x) for x in a_min_b)
-                    version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
-                    changes_for_version.append(f"disallowed `^{dep}{version_specifier}`")
-                b_min_a = sorted(b_v - a_v)
-                if b_min_a:
-                    try:
-                        version_list = to_version_list(b_min_a, all_versions)
-                    except Exception:
-                        version_list = ",".join(str(x) for x in b_min_a)
-                    version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
-                    changes_for_version.append(f"allowed `^{dep}{version_specifier}`")
-
-        if changes_for_version:
-            change_to_version["\n".join(changes_for_version)].append(v)
-
-    if change_to_version:
-        print(f"@@ {name} @@")
-    for changes_for_version, versions in change_to_version.items():
-        if versions is True:
-            diff = "-" if changes_for_version.startswith("removed") else "+"
-            print(f"{diff} `{name}` {changes_for_version}")
+    for name in spack.repo.PATH.all_package_names():
+        if name not in a or name not in b:
             continue
-        try:
-            version_list = to_version_list(
-                versions, sorted(spack.repo.PATH.get_pkg_class(name).versions.keys())
+        a_pkg = a[name]
+        b_pkg = b[name]
+
+        versions_in_a = set(StandardVersion.from_string(x) for x in a_pkg.keys()) - inf_versions
+        versions_in_b = set(StandardVersion.from_string(x) for x in b_pkg.keys()) - inf_versions
+
+        change_to_version = defaultdict(list)
+
+        if versions_in_a != versions_in_b:
+            a_min_b = versions_in_a - versions_in_b
+            b_min_a = versions_in_b - versions_in_a
+            if a_min_b:
+                change_to_version[
+                    f"removed versions {', '.join(str(x) for x in sorted(a_min_b))}"
+                ] = True
+            if b_min_a:
+                change_to_version[
+                    f"added versions {', '.join(str(x) for x in sorted(b_min_a))}"
+                ] = True
+
+        for v in sorted(versions_in_a & versions_in_b):
+            deps_a = next(
+                val for key, val in a_pkg.items() if StandardVersion.from_string(key) == v
             )
-        except Exception as e:
-            version_list = ",".join(str(v) for v in versions)
-        for line in changes_for_version.split("\n"):
-            diff = "-" if line.startswith("deleted") or line.startswith("disallowed") else "+"
-            version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
-            print(f"{diff} `{name}{version_specifier}` {line}")
-    if change_to_version:
-        print()
+            deps_b = next(
+                val for key, val in b_pkg.items() if StandardVersion.from_string(key) == v
+            )
+
+            deps_in_a = set(deps_a.keys())
+            deps_in_b = set(deps_b.keys())
+
+            changes_for_version = []
+
+            if deps_in_a != deps_in_b:
+                if deps_in_a - deps_in_b - {"py-setuptools"}:
+                    changes_for_version.append(
+                        f"deleted {', '.join(f'^{d}' for d in sorted(deps_in_a - deps_in_b))}"
+                    )
+                if deps_in_b - deps_in_a:
+                    changes_for_version.append(
+                        f"added {', '.join(f'^{d}' for d in sorted(deps_in_b - deps_in_a))}"
+                    )
+
+            for dep in sorted(deps_in_a & deps_in_b):
+                a_v = set(StandardVersion.from_string(v) for v in deps_a[dep])
+                b_v = set(StandardVersion.from_string(v) for v in deps_b[dep])
+
+                if a_v != b_v:
+                    all_versions = sorted(spack.repo.PATH.get_pkg_class(dep).versions.keys())
+                    a_min_b = sorted(a_v - b_v)
+                    if a_min_b:
+                        try:
+                            version_list = to_version_list(a_min_b, all_versions)
+                        except Exception:
+                            version_list = ",".join(str(x) for x in a_min_b)
+                        version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
+                        changes_for_version.append(f"disallowed `^{dep}{version_specifier}`")
+                    b_min_a = sorted(b_v - a_v)
+                    if b_min_a:
+                        try:
+                            version_list = to_version_list(b_min_a, all_versions)
+                        except Exception:
+                            version_list = ",".join(str(x) for x in b_min_a)
+                        version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
+                        changes_for_version.append(f"allowed `^{dep}{version_specifier}`")
+
+            if changes_for_version:
+                change_to_version["\n".join(changes_for_version)].append(v)
+
+        if change_to_version:
+            print(f"@@ {name} @@")
+        for changes_for_version, versions in change_to_version.items():
+            if versions is True:
+                diff = "-" if changes_for_version.startswith("removed") else "+"
+                print(f"{diff} `{name}` {changes_for_version}")
+                continue
+            try:
+                version_list = to_version_list(
+                    versions, sorted(spack.repo.PATH.get_pkg_class(name).versions.keys())
+                )
+            except Exception as e:
+                version_list = ",".join(str(v) for v in versions)
+            for line in changes_for_version.split("\n"):
+                diff = "-" if line.startswith("deleted") or line.startswith("disallowed") else "+"
+                version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
+                print(f"{diff} `{name}{version_specifier}` {line}")
+        if change_to_version:
+            print()

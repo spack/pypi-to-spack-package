@@ -30,7 +30,7 @@ that we will later generate new versions not yet in Spack available in PyPI.
 Next, we generate `package.py` files for the top N versions:
 
 ```console
-$ ./src/package.py generate spack_requirements.txt
+$ ./src/package.py generate --clean spack_requirements.txt
 ```
 
 This generates a new repo in the `./repo` dir. Have a look at `black`'s generated `package.py`
@@ -92,6 +92,9 @@ $ ./src/package.py export
 
 For every requirement / constraint that may apply, we take at most the best 10 matching versions.
 "Best" in the sense that we prefer final releases with largest version number.
+
+(If you don't want to generate *new* versions, but just clean up existing Spack packages with the
+exact same versions, use `./src/package.py generate --no-new-versions`)
 
 ## Support for specifiers / markers
 - ✅ `extra == "a" and extra == "b" or extra == "c"`: gets translated into

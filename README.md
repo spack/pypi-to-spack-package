@@ -12,22 +12,31 @@ There are two inputs in this project:
 Let's first see what's in the database:
 
 ```console
-$ spack-python src/package.py info
-Total packages: 592120
-Total versions: 5651880
+$ ./src/package.py info
+Total packages: 617672
+Total versions: 6059310
 ```
 
-Then generate `package.py` files for the top N versions matching
-[spack_requirements.txt](spack_requirements.txt). This includes also dependencies recursively:
+Then let's export Spack's builtin packages to a `spack_requirements.txt` file:
 
 ```console
-$ spack-python src/package.py generate spack_requirements.txt
+$ ./src/package.py update-requirements --new
 ```
 
-Finally have a look at `black`'s generated `package.py` file:
+This command populates [spack_requirements.txt](spack_requirements.txt). The `--new` flag ensures
+that we will later generate new versions not yet in Spack, but available from PyPI.
+
+Next, we generate `package.py` files for the top N versions:
 
 ```console
-$ cat pypi/packages/py-black/package.py
+$ ./src/package.py generate spack_requirements.txt
+```
+
+This generates a new repo in the `./repo` dir. Have a look at `black`'s generated `package.py`
+file:
+
+```console
+$ cat repo/packages/py-black/package.py
 ```
 
 ```python
@@ -70,6 +79,12 @@ class PyBlack(PythonPackage):
         depends_on("py-uvloop@0.15.2:", when="@21.5-beta2:21,22.10:+uvloop")
 
 
+```
+
+When you're happy, you can automatically export all the packages to the Spack repository:
+
+```console
+$ ./src/package.py export
 ```
 
 ## What versions are selected?

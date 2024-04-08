@@ -960,6 +960,9 @@ def dump_requirements(cursor: sqlite3.Cursor, new: bool = False, f: io.StringIO 
 def export_repo(repo_in: str, repo_out: str):
     """Update the Spack package.py files in repo_out with the package.py files in repo_in."""
 
+    repo_in = os.path.join(repo_in, "packages")
+    repo_out = os.path.join(repo_out, "packages")
+
     begin_versions = "    # BEGIN VERSIONS [WHEEL ONLY]"
     end_versions = "    # END VERSIONS"
     begin_variants = "    # BEGIN VARIANTS"

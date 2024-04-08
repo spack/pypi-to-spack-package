@@ -20,8 +20,6 @@ end_variants = "    # END VARIANTS"
 begin_deps = "    # BEGIN DEPENDENCIES"
 end_deps = "    # END DEPENDENCIES"
 
-directive_regex = re.compile(r"((?:    (?:version|depends_on|variant))\(|\(|\)\n?)")
-
 for dir in sorted(os.listdir(repo_in)):
     in_package = os.path.join(repo_in, dir, "package.py")
     out_package = os.path.join(repo_out, dir, "package.py")

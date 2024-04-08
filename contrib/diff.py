@@ -49,7 +49,7 @@ if args.command in ("before", "after"):
     pkgs = spack.repo.PATH.all_package_names()
     print()
     for i, name in enumerate(pkgs):
-        percent = int(i / len(pkgs) * 100)
+        percent = int((i + 1) / len(pkgs) * 100)
         print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {name}")
         s = Spec(name)
         s._mark_concrete()
@@ -94,7 +94,8 @@ elif args.command == "diff":
     a = json.load(open("before.json"))
     b = json.load(open("after.json"))
 
-    inf_versions = {StandardVersion.from_string(x) for x in infinity_versions}
+    # inf_versions = {StandardVersion.from_string(x) for x in infinity_versions}
+    inf_versions = set()
 
     for name in spack.repo.PATH.all_package_names():
         if name not in a or name not in b:
@@ -112,11 +113,11 @@ elif args.command == "diff":
             b_min_a = versions_in_b - versions_in_a
             if a_min_b:
                 change_to_version[
-                    f"removed versions {', '.join(str(x) for x in sorted(a_min_b))}"
+                    f"removed versions {', '.join(f'`{x}`' for x in sorted(a_min_b))}"
                 ] = True
             if b_min_a:
                 change_to_version[
-                    f"added versions {', '.join(str(x) for x in sorted(b_min_a))}"
+                    f"added versions {', '.join(f'`{x}`' for x in sorted(b_min_a))}"
                 ] = True
 
         for v in sorted(versions_in_a & versions_in_b):

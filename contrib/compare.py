@@ -8,7 +8,10 @@ import spack.repo
 from spack.dependency import Dependency
 from spack.deptypes import LINK, RUN
 from spack.spec import Spec
-from spack.version import StandardVersion, VersionList, VersionRange
+from spack.version import StandardVersion, VersionList, VersionRange, infinity_versions
+
+MOVE_UP = "\033[1A"
+CLEAR_LINE = "\x1b[2K"
 
 
 def to_version_list(versions, all_versions):
@@ -41,8 +44,11 @@ args = parser.parse_args()
 
 if args.command in ("before", "after"):
     possible_versions: Dict[str, Dict[StandardVersion, Dict[str, List[StandardVersion]]]] = {}
-
-    for name in spack.repo.PATH.all_package_names():
+    pkgs = spack.repo.PATH.all_package_names()
+    print()
+    for i, name in enumerate(pkgs):
+        percent = int(i / len(pkgs) * 100)
+        print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {name}")
         s = Spec(name)
         s._mark_concrete()
         pkg = s.package
@@ -77,6 +83,8 @@ if args.command in ("before", "after"):
                 for dep_name, versions in deps_for_version.items()
             }
 
+    print(f"{MOVE_UP}{CLEAR_LINE}[100%] done.")
+
     with open(f"{args.command}.json", "w") as f:
         json.dump(possible_versions, f, sort_keys=True)
 
@@ -84,7 +92,7 @@ elif args.command == "diff":
     a = json.load(open("before.json"))
     b = json.load(open("after.json"))
 
-    inf_versions = {StandardVersion.from_string(x) for x in ("develop", "main", "master")}
+    inf_versions = {StandardVersion.from_string(x) for x in infinity_versions}
 
     for name in spack.repo.PATH.all_package_names():
         if name not in a or name not in b:
@@ -172,7 +180,7 @@ elif args.command == "diff":
             except Exception as e:
                 version_list = ",".join(str(v) for v in versions)
             for line in changes_for_version.split("\n"):
-                diff = "-" if line.startswith("deleted") or line.startswith("disallowed") else "+"
+                diff = "-" if line.startswith("deleted") or line.startswith("allowed") else "+"
                 version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
                 print(f"{diff} `{name}{version_specifier}` {line}")
         if change_to_version:

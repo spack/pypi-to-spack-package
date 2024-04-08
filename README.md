@@ -88,6 +88,19 @@ When you're happy, you can automatically export all the packages to the Spack re
 $ ./src/package.py export
 ```
 
+> [!TIP]
+> Some packages have further runtime dependencies from the system that cannot be articulated in
+> `Requires-Dist` fields (e.g. `depends_on("git", type="run")`). Furthermore, Spack maintainers
+> sometimes add forward compat bounds that were not anticipated at the time of release of a version
+> (e.g. `depends_on("py-cython@:0", when="@:3")` or `depends_on("python@:3.10", when="@:4")`). To
+> preserve these extra constraints, you can wrap them in the builtin repo's `package.py`:
+> ```python
+> # <<< extra constraints
+> depends_on(...)
+> # >>>
+> ```
+> Those lines will not be deleted by `./src/package.py export`.
+
 ## What versions are selected?
 
 For every requirement / constraint that may apply, we take at most the best 10 matching versions.
@@ -123,10 +136,6 @@ exact same versions, use `./src/package.py generate --no-new-versions`)
     a version list. So, I have not implemented this.
   - ❌ The variables `os_name`, `platform_machine`, `platform_release`, `platform_version`,
   `implementation_version` are still not implemented (some cannot be?).
-
-## TODO
-
-- [ ] Update spack package.py files instead of creating new ones.
 
 ## Importing the PyPI database
 

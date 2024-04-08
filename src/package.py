@@ -924,7 +924,7 @@ def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
     return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None
 
 
-def dump_requirements(cursor: sqlite3.Cursor, f: io.StringIO = sys.stdout):
+def dump_requirements(cursor: sqlite3.Cursor, new: bool = False, f: io.StringIO = sys.stdout):
     """Dump all Spack packages are requirements to a file."""
     count = 0
     total_pkgs = len(spack.repo.PATH.all_package_names())
@@ -941,6 +941,9 @@ def dump_requirements(cursor: sqlite3.Cursor, f: io.StringIO = sys.stdout):
 
         variants = ",".join(s for s in pkg.variants if s != "build_system")
         variants = variants if not variants else f"[{variants}]"
+
+        if new:
+            print(f"{name}{variants}", file=f)
 
         for version in pkg.versions:
             try:
@@ -1121,9 +1124,15 @@ def main():
         "--requirements", help="requirements.txt file", default="spack_requirements.txt"
     )
     subparsers.add_parser("update-db", help="Download the latest database")
-    subparsers.add_parser(
+    parser_requirements = subparsers.add_parser(
         "update-requirements",
         help="Populate spack_requirements.txt from Spack's builtin repo [step 1]",
+    )
+    parser_requirements.add_argument(
+        "--new",
+        action="store_true",
+        help="Include new versions. This generates an additional plain requirement `name` apart "
+        "from `name ==version` for all versions in Spack",
     )
     parser_export = subparsers.add_parser(
         "export", help="Update Spack's repo with the generated package.py files [step 3]"
@@ -1158,7 +1167,7 @@ def main():
 
     if args.command == "update-requirements":
         with open("spack_requirements.txt", "w") as f:
-            dump_requirements(sqlite_cursor, f)
+            dump_requirements(sqlite_cursor, args.new, f)
 
     elif args.command == "info":
         print(

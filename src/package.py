@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import argparse
+import ast
 import gzip
 import io
 import itertools
@@ -19,13 +20,18 @@ import sys
 import urllib.error
 import urllib.request
 from collections import defaultdict
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type, Union
 
 import packaging.version as pv
+import spack.package_base
+import spack.paths
+import spack.repo
+import spack.util.naming as nm
 import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from spack.build_systems.python import PythonExtension, PythonPackage
 from spack.error import UnsatisfiableSpecError
 from spack.parser import SpecSyntaxError
 from spack.spec import Spec
@@ -68,6 +74,9 @@ HEADER = """\
 from spack.package import *
 
 """
+
+MOVE_UP = "\033[1A"
+CLEAR_LINE = "\x1b[2K"
 
 
 class VersionsLookup:
@@ -908,27 +917,234 @@ def _print_package(name: str, node: Node, f: io.StringIO):
             print(f"        # {line}", file=f)
 
 
+def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
+    if PythonPackage not in pkg.__bases__ and PythonExtension not in pkg.__bases__:
+        return False
+    name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
+    return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None
+
+
+def dump_requirements(cursor: sqlite3.Cursor, f: io.StringIO = sys.stdout):
+    """Dump all Spack packages are requirements to a file."""
+    count = 0
+    total_pkgs = len(spack.repo.PATH.all_package_names())
+    pkgs: List[Type[spack.package_base.PackageBase]] = spack.repo.PATH.all_package_classes()
+    skip = []
+    print()
+    for i, pkg in enumerate(pkgs):
+        percent = int(100 * (i + 1) / total_pkgs)
+        print(f"{MOVE_UP}{CLEAR_LINE} [{percent:3}%] {pkg.name}")
+        if not is_pypi(pkg, cursor):
+            continue
+        count += 1
+        name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
+
+        variants = ",".join(s for s in pkg.variants if s != "build_system")
+        variants = variants if not variants else f"[{variants}]"
+
+        for version in pkg.versions:
+            try:
+                pv.Version(str(version))
+            except:
+                skip.append(f"{name}=={version}")
+                continue
+            print(f"{name}{variants} =={version}", file=f)
+    for s in skip:
+        print(f"skipped: {s}", file=sys.stderr)
+    print(f"total: {count} pypi packages")
+
+
+def update_repo(repo_in: str, repo_out: str):
+    """Update the Spack package.py files in repo_out with the package.py files in repo_in."""
+
+    begin_versions = "    # BEGIN VERSIONS [WHEEL ONLY]"
+    end_versions = "    # END VERSIONS"
+    begin_variants = "    # BEGIN VARIANTS"
+    end_variants = "    # END VARIANTS"
+    begin_deps = "    # BEGIN DEPENDENCIES"
+    end_deps = "    # END DEPENDENCIES"
+
+    for dir in sorted(os.listdir(repo_in)):
+        in_package = os.path.join(repo_in, dir, "package.py")
+        out_package = os.path.join(repo_out, dir, "package.py")
+
+        if not os.path.exists(out_package):
+            print(f"not in spack: {dir}", file=sys.stderr)
+            continue
+
+        try:
+            with open(in_package, "r") as f:
+                contents = f.read()
+        except OSError:
+            print(f"failed to read {in_package}", file=sys.stderr)
+            continue
+
+        try:
+            versions = contents[
+                contents.index(begin_versions)
+                + len(begin_versions)
+                + 1 : contents.index(end_versions)
+            ].split("\n")
+            variants = contents[
+                contents.index(begin_variants)
+                + len(begin_variants)
+                + 1 : contents.index(end_variants)
+            ].split("\n")
+            deps = contents[
+                contents.index(begin_deps) + len(begin_deps) + 1 : contents.index(end_deps)
+            ].split("\n")
+            assert versions
+        except (ValueError, AssertionError):
+            continue
+
+        with open(out_package, "r") as f:
+            src = f.read()
+
+        lines = src.split("\n")
+
+        # keep bits that are between `# <<< ...` and # ... >>>` comments:
+        lines_to_keep: Set[int] = set()
+        start = None
+        start_regex, end_regex = re.compile(r"\s*# <<<"), re.compile(r"\s*# .*>>>")
+        for i, line in enumerate(lines):
+            if start_regex.match(line):
+                start = i
+            elif start is not None and end_regex.match(line):
+                lines_to_keep.update(range(start, i + 1))
+
+        tree = ast.parse(src)
+        clasname = nm.mod_to_class(dir)
+
+        for n in ast.walk(tree):
+            if isinstance(n, ast.ClassDef) and n.name == clasname:
+                break
+        else:
+            print(f"failed to find class {clasname} in {out_package}", file=sys.stderr)
+            continue
+
+        lines_to_delete: Set[int] = set()
+
+        for node in n.body:
+            # delete with expressions and loops
+            if isinstance(node, (ast.With, ast.For)):
+                lines_to_delete.update(range(node.lineno - 1, node.end_lineno))
+                continue
+
+            # delete build instructions
+            if isinstance(node, ast.FunctionDef):
+                if node.name in (
+                    "setup_build_environment",
+                    "url_for_version",
+                    "install",
+                    "build_directory",
+                    "patch",
+                ) or any(
+                    isinstance(d, ast.Call)
+                    and isinstance(d.func, ast.Name)
+                    and d.func.id in ("run_before", "run_after")
+                    for d in node.decorator_list
+                ):
+                    lines_to_delete.update(range(node.lineno - 1, node.end_lineno))
+                    for d in node.decorator_list:
+                        lines_to_delete.update(range(d.lineno - 1, d.end_lineno))
+                continue
+
+            if not isinstance(node, ast.Expr):
+                continue
+
+            expr = node.value
+
+            # delete any version, depends_on, or variant directive
+            if (
+                isinstance(expr, ast.Call)
+                and isinstance(expr.func, ast.Name)
+                and expr.func.id in ("version", "depends_on", "variant", "patch")
+            ):
+                for i in range(expr.lineno - 1, expr.end_lineno):
+                    lines_to_delete.add(i)
+                if expr.func.id == "variant":
+                    pattern = f'variant("{expr.args[0].s}"'
+
+                    # Preserve variants from the original package as they contain a description.
+                    for i, line in enumerate(variants):
+                        if pattern in line:
+                            variants[i] = "\n".join(lines[expr.lineno - 1 : expr.end_lineno])
+                # Remove patch files
+                if expr.func.id == "patch":
+                    arg = expr.args[0]
+                    assert isinstance(arg, ast.Constant)
+                    patch = os.path.join(repo_out, dir, arg.value)
+                    try:
+                        os.unlink(patch)
+                    except OSError:
+                        pass
+
+        # delete lines that are only comments or empty
+        for line in range(min(lines_to_delete), len(lines)):
+            stripped = lines[line].strip()
+            if not stripped or stripped.startswith("#"):
+                lines_to_delete.add(line)
+
+        # preserve special comments
+        delete = sorted(lines_to_delete - lines_to_keep, reverse=True)
+
+        for i in delete:
+            del lines[i]
+
+        lines.insert(
+            delete[-1],
+            "\n".join(l for l in ("\n".join(versions), "\n".join(variants), "\n".join(deps)) if l),
+        )
+
+        with open(out_package, "w") as f:
+            f.write("\n".join(lines))
+
+
 def main():
 
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
     parser.add_argument("--db", default="data.db", help="The database file to read from")
-    subparsers = parser.add_subparsers(dest="command", help="The command to run")
-    p_new_generate = subparsers.add_parser("generate", help="Generate a package.py file")
-    p_new_generate.add_argument("--directory", "-o", help="Output directory")
-    p_new_generate.add_argument("--clean", action="store_true", help="Clean output directory")
-    p_new_generate.add_argument(
+    subparsers = parser.add_subparsers(dest="command", help="The command to run", required=True)
+    parser_generate = subparsers.add_parser(
+        "generate", help="Generate package.py files from spack_requirements.txt"
+    )
+    parser_generate.add_argument("--directory", "-o", help="Output repo directory", default="repo")
+    parser_generate.add_argument(
+        "--clean", action="store_true", help="Clean output repo before generating"
+    )
+    parser_generate.add_argument(
         "--no-new-versions", action="store_true", help="Do not add new versions when possible"
     )
-    p_new_generate.add_argument("requirements", help="requirements.txt file")
+    parser_generate.add_argument(
+        "--requirements", help="requirements.txt file", default="spack_requirements.txt"
+    )
+    subparsers.add_parser("update-db", help="Download the latest database")
+    subparsers.add_parser(
+        "update-requirements", help="Populate spack_requirements.txt from Spack's builtin repo"
+    )
+    parser_update_repo = subparsers.add_parser(
+        "update-repo", help="Update Spack's repo with the generated package.py files"
+    )
+    parser_update_repo.add_argument(
+        "--input", help="Input repo (dir that contains the repo.yaml file)", default="repo"
+    )
+    parser_update_repo.add_argument(
+        "--output",
+        help="Output repo (dir that contains the repo.yaml file)",
+        default=spack.paths.packages_path,
+    )
     subparsers.add_parser("info", help="Show basic info about database or package")
-    subparsers.add_parser("update", help="Download the latest database")
 
     args = parser.parse_args()
 
-    if args.command == "update":
+    if args.command == "update-db":
         download_db()
+        sys.exit(0)
+
+    if args.command == "update-repo":
+        update_repo(args.input, args.output)
         sys.exit(0)
 
     elif not os.path.exists(args.db):
@@ -939,7 +1155,11 @@ def main():
     sqlite_connection = sqlite3.connect(args.db)
     sqlite_cursor = sqlite_connection.cursor()
 
-    if args.command == "info":
+    if args.command == "update-requirements":
+        with open("spack_requirements.txt", "w") as f:
+            dump_requirements(sqlite_cursor, f)
+
+    elif args.command == "info":
         print(
             "Total packages:",
             sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0],

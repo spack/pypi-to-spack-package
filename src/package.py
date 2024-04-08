@@ -954,7 +954,7 @@ def dump_requirements(cursor: sqlite3.Cursor, f: io.StringIO = sys.stdout):
     print(f"total: {count} pypi packages")
 
 
-def update_repo(repo_in: str, repo_out: str):
+def export_repo(repo_in: str, repo_out: str):
     """Update the Spack package.py files in repo_out with the package.py files in repo_in."""
 
     begin_versions = "    # BEGIN VERSIONS [WHEEL ONLY]"
@@ -1105,10 +1105,10 @@ def main():
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
-    parser.add_argument("--db", default="data.db", help="The database file to read from")
-    subparsers = parser.add_subparsers(dest="command", help="The command to run", required=True)
+    parser.add_argument("--db", default="data.db", help="The PyPI sqlite database to read from")
+    subparsers = parser.add_subparsers(dest="command", required=True)
     parser_generate = subparsers.add_parser(
-        "generate", help="Generate package.py files from spack_requirements.txt"
+        "generate", help="Generate package.py files from spack_requirements.txt [step 2]"
     )
     parser_generate.add_argument("--directory", "-o", help="Output repo directory", default="repo")
     parser_generate.add_argument(
@@ -1122,15 +1122,16 @@ def main():
     )
     subparsers.add_parser("update-db", help="Download the latest database")
     subparsers.add_parser(
-        "update-requirements", help="Populate spack_requirements.txt from Spack's builtin repo"
+        "update-requirements",
+        help="Populate spack_requirements.txt from Spack's builtin repo [step 1]",
     )
-    parser_update_repo = subparsers.add_parser(
-        "update-repo", help="Update Spack's repo with the generated package.py files"
+    parser_export = subparsers.add_parser(
+        "export", help="Update Spack's repo with the generated package.py files [step 3]"
     )
-    parser_update_repo.add_argument(
+    parser_export.add_argument(
         "--input", help="Input repo (dir that contains the repo.yaml file)", default="repo"
     )
-    parser_update_repo.add_argument(
+    parser_export.add_argument(
         "--output",
         help="Output repo (dir that contains the repo.yaml file)",
         default=spack.paths.packages_path,
@@ -1143,8 +1144,8 @@ def main():
         download_db()
         sys.exit(0)
 
-    if args.command == "update-repo":
-        update_repo(args.input, args.output)
+    if args.command == "export":
+        export_repo(args.input, args.output)
         sys.exit(0)
 
     elif not os.path.exists(args.db):

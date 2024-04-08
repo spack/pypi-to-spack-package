@@ -97,7 +97,7 @@ $ ./src/package.py export
 > ```python
 > # <<< extra constraints
 > depends_on(...)
-> # >>>
+> # extra constraints >>>
 > ```
 > Those lines will not be deleted by `./src/package.py export`.
 

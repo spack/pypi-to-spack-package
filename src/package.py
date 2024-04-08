@@ -924,34 +924,40 @@ def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
     return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None
 
 
-def dump_requirements(cursor: sqlite3.Cursor, new: bool = False, f: io.StringIO = sys.stdout):
+def dump_requirements(
+    cursor: sqlite3.Cursor,
+    new: bool = False,
+    packages: Optional[Set[str]] = None,
+    f: io.StringIO = sys.stdout,
+):
     """Dump all Spack packages are requirements to a file."""
     count = 0
-    total_pkgs = len(spack.repo.PATH.all_package_names())
-    pkgs: List[Type[spack.package_base.PackageBase]] = spack.repo.PATH.all_package_classes()
+    packages = packages or set(spack.repo.PATH.all_package_names())
+    total_pkgs = len(packages)
     skip = []
     print()
-    for i, pkg in enumerate(pkgs):
+    for i, name in enumerate(packages):
+        pkg = spack.repo.PATH.get_pkg_class(name)
         percent = int(100 * (i + 1) / total_pkgs)
-        print(f"{MOVE_UP}{CLEAR_LINE} [{percent:3}%] {pkg.name}")
+        print(f"{MOVE_UP}{CLEAR_LINE} [{percent:3}%] {name}")
         if not is_pypi(pkg, cursor):
             continue
         count += 1
-        name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
+        pypi_name = name[3:] if name.startswith("py-") else name
 
         variants = ",".join(s for s in pkg.variants if s != "build_system")
         variants = variants if not variants else f"[{variants}]"
 
         if new:
-            print(f"{name}{variants}", file=f)
+            print(f"{pypi_name}{variants}", file=f)
 
         for version in pkg.versions:
             try:
                 pv.Version(str(version))
             except:
-                skip.append(f"{name}=={version}")
+                skip.append(f"{pypi_name}=={version}")
                 continue
-            print(f"{name}{variants} =={version}", file=f)
+            print(f"{pypi_name}{variants} =={version}", file=f)
     for s in skip:
         print(f"skipped: {s}", file=sys.stderr)
     print(f"total: {count} pypi packages")
@@ -1137,6 +1143,9 @@ def main():
         help="Include new versions. This generates an additional plain requirement `name` apart "
         "from `name ==version` for all versions in Spack",
     )
+    parser_requirements.add_argument(
+        "--from-file", help="Use a list of packages from a file instead of all from builtin repo"
+    )
     parser_export = subparsers.add_parser(
         "export", help="Update Spack's repo with the generated package.py files [step 3]"
     )
@@ -1169,8 +1178,13 @@ def main():
     sqlite_cursor = sqlite_connection.cursor()
 
     if args.command == "update-requirements":
+        if args.from_file:
+            with open(args.from_file) as f:
+                packages = set(line.strip() for line in f.readlines())
+        else:
+            packages = None
         with open("spack_requirements.txt", "w") as f:
-            dump_requirements(sqlite_cursor, args.new, f)
+            dump_requirements(sqlite_cursor, args.new, packages, f)
 
     elif args.command == "info":
         print(

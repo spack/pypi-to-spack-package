@@ -692,7 +692,7 @@ def _generate(
 
     while queue:
         name, specifier, extras, depth = queue.pop()
-        print(f"{' ' * depth}{name} {specifier} [queue = #{len(queue)}]", file=sys.stderr)
+        print(f"[queue: {len(queue):5}] {' ' * depth}{name} {specifier}", file=sys.stderr)
         # Populate package info if we haven't seen it yet.
         if name not in graph:
             node = Node()
@@ -1110,7 +1110,7 @@ def main():
     parser_generate = subparsers.add_parser(
         "generate", help="Generate package.py files from spack_requirements.txt [step 2]"
     )
-    parser_generate.add_argument("--directory", "-o", help="Output repo directory", default="repo")
+    parser_generate.add_argument("--repo", "-o", help="Output repo directory", default="repo")
     parser_generate.add_argument(
         "--clean", action="store_true", help="Clean output repo before generating"
     )
@@ -1129,11 +1129,11 @@ def main():
         "export", help="Update Spack's repo with the generated package.py files [step 3]"
     )
     parser_export.add_argument(
-        "--input", help="Input repo (dir that contains the repo.yaml file)", default="repo"
+        "--input", help="Input repo that contains repo.yaml (default: ./repo)", default="repo"
     )
     parser_export.add_argument(
         "--output",
-        help="Output repo (dir that contains the repo.yaml file)",
+        help="Output repo that contains repo.yaml (default: Spack builtin)",
         default=spack.paths.packages_path,
     )
     subparsers.add_parser("info", help="Show basic info about database or package")
@@ -1182,7 +1182,7 @@ def main():
 
         graph = _generate(queue, sqlite_cursor, args.no_new_versions)
 
-        output_dir = pathlib.Path(args.directory or "pypi")
+        output_dir = pathlib.Path(args.repo)
         packages_dir = output_dir / "packages"
 
         if args.clean:

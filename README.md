@@ -24,7 +24,7 @@ $ ./src/package.py update-requirements --new
 ```
 
 This command populates [spack_requirements.txt](spack_requirements.txt). The `--new` flag ensures
-that we will later generate new versions not yet in Spack, but available from PyPI.
+that we will later generate new versions not yet in Spack available in PyPI.
 
 Next, we generate `package.py` files for the top N versions:
 

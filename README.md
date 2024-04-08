@@ -2,10 +2,10 @@
 
 ## Usage
 
-There are two inputs in this project:
+There are two inputs in this tool:
 
 1. [`spack_requirements.txt`](spack_requirements.txt): a set of requirements we want to generate
-   `package.py` files for. This project will generate at least one matching version for each
+   `package.py` files for. This tool will generate at least one matching version for each
     requirement listed in this file.
 2. `data.db`: a SQLite database containing most PyPI entries. The database is downloaded
     automatically from the GitHub releases page when running the script for the first time.

@@ -1180,7 +1180,7 @@ def main():
     if args.command == "update-requirements":
         if args.from_file:
             with open(args.from_file) as f:
-                packages = set(line.strip() for line in f.readlines())
+                packages = set(line.strip() for line in f.readlines() if line.strip())
         else:
             packages = None
         with open("spack_requirements.txt", "w") as f:

@@ -925,14 +925,11 @@ def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
 
 
 def dump_requirements(
-    cursor: sqlite3.Cursor,
-    new: bool = False,
-    packages: Optional[Set[str]] = None,
-    f: io.StringIO = sys.stdout,
+    cursor: sqlite3.Cursor, new_pkgs: Optional[Set[str]] = None, f: io.StringIO = sys.stdout
 ):
     """Dump all Spack packages are requirements to a file."""
     count = 0
-    packages = packages or set(spack.repo.PATH.all_package_names())
+    packages = spack.repo.PATH.all_package_names()
     total_pkgs = len(packages)
     skip = []
     print()
@@ -948,7 +945,7 @@ def dump_requirements(
         variants = ",".join(s for s in pkg.variants if s != "build_system")
         variants = variants if not variants else f"[{variants}]"
 
-        if new:
+        if new_pkgs and name in new_pkgs:
             print(f"{pypi_name}{variants}", file=f)
 
         for version in pkg.versions:
@@ -981,7 +978,12 @@ def export_repo(repo_in: str, repo_out: str):
         out_package = os.path.join(repo_out, dir, "package.py")
 
         if not os.path.exists(out_package):
-            print(f"not in spack: {dir}", file=sys.stderr)
+            try:
+                os.mkdir(os.path.join(repo_out, dir))
+            except OSError:
+                pass
+
+            shutil.copy(in_package, out_package)
             continue
 
         try:
@@ -1137,15 +1139,15 @@ def main():
         "update-requirements",
         help="Populate spack_requirements.txt from Spack's builtin repo [step 1]",
     )
-    parser_requirements.add_argument(
+    # exclusive
+    new_group = parser_requirements.add_mutually_exclusive_group()
+    new_group.add_argument(
         "--new",
         action="store_true",
         help="Include new versions. This generates an additional plain requirement `name` apart "
         "from `name ==version` for all versions in Spack",
     )
-    parser_requirements.add_argument(
-        "--from-file", help="Use a list of packages from a file instead of all from builtin repo"
-    )
+    new_group.add_argument("--new-from-file", help="List the packages that need to be bumped")
     parser_export = subparsers.add_parser(
         "export", help="Update Spack's repo with the generated package.py files [step 3]"
     )
@@ -1178,13 +1180,15 @@ def main():
     sqlite_cursor = sqlite_connection.cursor()
 
     if args.command == "update-requirements":
-        if args.from_file:
-            with open(args.from_file) as f:
-                packages = set(line.strip() for line in f.readlines() if line.strip())
+        if args.new_from_file:
+            with open(args.new_from_file) as f:
+                new_pkgs = set(line.strip() for line in f.readlines() if line.strip())
+        elif args.new:
+            new_pkgs = set(spack.repo.PATH.all_package_names())
         else:
-            packages = None
+            new_pkgs = None
         with open("spack_requirements.txt", "w") as f:
-            dump_requirements(sqlite_cursor, args.new, packages, f)
+            dump_requirements(sqlite_cursor, new_pkgs, f)
 
     elif args.command == "info":
         print(

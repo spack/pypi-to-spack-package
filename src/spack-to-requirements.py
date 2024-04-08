@@ -1,3 +1,5 @@
+#!/usr/bin/env spack-python
+
 import io
 import sqlite3
 import sys

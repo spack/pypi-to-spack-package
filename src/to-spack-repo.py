@@ -1,3 +1,5 @@
+#!/usr/bin/env spack-python
+
 # move fully universal wheel packages to spack repo.
 
 import ast

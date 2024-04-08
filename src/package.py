@@ -1,3 +1,5 @@
+#!/usr/bin/env spack-python
+
 # Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #

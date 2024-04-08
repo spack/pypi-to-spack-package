@@ -1,3 +1,5 @@
+#!/usr/bin/env spack-python
+
 import argparse
 import json
 from collections import defaultdict

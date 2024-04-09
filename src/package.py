@@ -690,9 +690,12 @@ def _generate(
         for name, specifier, extras, _ in queue:
             usable_versions[name].add(pv.Version(list(specifier)[0].version))
 
+    i = 0
+
     while queue:
+        i += 1
         name, specifier, extras, depth = queue.pop()
-        print(f"[queue: {len(queue):5}] {' ' * depth}{name} {specifier}", file=sys.stderr)
+        print(f"[{i:5}/{i+len(queue):5}] {' ' * depth}{name} {specifier}", file=sys.stderr)
         # Populate package info if we haven't seen it yet.
         if name not in graph:
             node = Node()

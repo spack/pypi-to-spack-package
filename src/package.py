@@ -55,12 +55,12 @@ MAX_VERSIONS = 1
 KNOWN_PYTHON_VERSIONS = (
     (3, 6, 15),
     (3, 7, 17),
-    (3, 8, 18),
-    (3, 9, 18),
-    (3, 10, 13),
-    (3, 11, 7),
-    (3, 12, 1),
-    (3, 13, 0),
+    (3, 8, 20),
+    (3, 9, 21),
+    (3, 10, 16),
+    (3, 11, 11),
+    (3, 12, 9),
+    (3, 13, 2),
     (4, 0, 0),
 )
 
@@ -944,7 +944,9 @@ def dump_requirements(
         count += 1
         pypi_name = name[3:] if name.startswith("py-") else name
 
-        variants = ",".join(s for s in pkg.variants if s != "build_system")
+        variants = ",".join(
+            set(x for y in pkg.variants.values() for x in y if x != "build_system")
+        )
         variants = variants if not variants else f"[{variants}]"
 
         if new_pkgs and name in new_pkgs:

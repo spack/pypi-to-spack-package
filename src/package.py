@@ -32,8 +32,7 @@ from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from spack.build_systems.python import PythonExtension, PythonPackage
-from spack.error import UnsatisfiableSpecError
-from spack.parser import SpecSyntaxError
+from spack.error import UnsatisfiableSpecError, SpecSyntaxError
 from spack.spec import Spec
 from spack.util.naming import mod_to_class
 from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC

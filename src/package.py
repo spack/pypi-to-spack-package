@@ -23,7 +23,6 @@ from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type, Union
 
 import packaging.version as pv
 import spack.package_base
-import spack.paths
 import spack.repo
 import spack.util.naming as nm
 import spack.version as vn
@@ -1224,12 +1223,11 @@ def main():
             except OSError:
                 pass
 
-        if not output_dir.exists():
-            packages_dir.mkdir(parents=True)
+        packages_dir.mkdir(parents=True, exist_ok=True)
 
         if not (output_dir / "repo.yaml").exists():
             with open(output_dir / "repo.yaml", "w") as f:
-                f.write("repo:\n  namespace: python\n  api: v2.0\n")
+                f.write("repo:\n  namespace: builtin\n  api: v2.0\n")
 
         for name, node in graph.items():
             spack_name = f"{SPACK_PREFIX}{name}"

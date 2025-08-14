@@ -17,7 +17,6 @@ import re
 import shutil
 import sqlite3
 import sys
-import urllib.error
 import urllib.request
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type, Union
@@ -31,10 +30,9 @@ import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from spack.build_systems.python import PythonExtension, PythonPackage
 from spack.error import UnsatisfiableSpecError, SpecSyntaxError
 from spack.spec import Spec
-from spack.util.naming import mod_to_class
+from spack.util.naming import pkg_name_to_class_name
 from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC
 from spack.version.version_types import VersionStrComponent
 
@@ -920,7 +918,7 @@ def _print_package(name: str, node: Node, f: io.StringIO):
 
 
 def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
-    if PythonPackage not in pkg.__bases__ and PythonExtension not in pkg.__bases__:
+    if not any(base.__name__ in ("PythonPackage", "PythonExtension") for base in pkg.__bases__):
         return False
     name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
     return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None
@@ -1031,7 +1029,7 @@ def export_repo(repo_in: str, repo_out: str):
                 lines_to_keep.update(range(start, i + 1))
 
         tree = ast.parse(src)
-        clasname = nm.mod_to_class(dir)
+        clasname = nm.pkg_name_to_class_name(dir)
 
         for n in ast.walk(tree):
             if isinstance(n, ast.ClassDef) and n.name == clasname:

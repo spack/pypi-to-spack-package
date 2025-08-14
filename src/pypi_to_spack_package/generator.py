@@ -520,9 +520,20 @@ def _format_when_spec(spec: Spec) -> str:
 
 def download_db():
     print("Downloading latest database (~1GB, may take a while...)", file=sys.stderr)
+    print(file=sys.stderr)
+    written = 0
     with urllib.request.urlopen(DB_URL) as response, open("data.db", "wb") as f:
         with gzip.GzipFile(fileobj=response) as gz:
-            shutil.copyfileobj(gz, f)
+            while True:
+                chunk = gz.read(8192)
+                if not chunk:
+                    break
+                f.write(chunk)
+                written += len(chunk)
+                print(f"{MOVE_UP}{CLEAR_LINE}Written {written // (1024*1024)}MB", file=sys.stderr)
+
+    sys.stderr.write(f"{MOVE_UP}{CLEAR_LINE}")
+    print("Download completed!", file=sys.stderr)
 
 
 def _validate_requirements(

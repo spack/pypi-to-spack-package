@@ -2,10 +2,24 @@
 
 ## Quick start
 
+Install this tool in a virtual environment (currently only available from source):
+
 ```console
-$ export PYTHONPATH=$spack/lib/spack  # set up Spack's Python environment
-$ pip install -e .[dev]               # installs runtime + dev deps ("packaging", etc.)
-$ pypi-to-spack info                  # show DB stats (will download DB if missing)
+$ python -mvenv .venv
+$ source .venv/bin/activate
+$ pip install "git+http://github.com/spack/pypi-to-spack-package.git#egg=pypi-to-spack-package[dev]"
+```
+
+Set up Spack's Python path:
+
+```console
+$ export PYTHONPATH=$spack/lib/spack
+```
+
+Run it:
+
+```
+$ pypi-to-spack info
 ```
 
 There are two entry points provided after installation:

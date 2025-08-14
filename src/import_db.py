@@ -148,18 +148,32 @@ def import_distributions(path="pypi-distributions"):
     sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--distributions", action="store_true")
-parser.add_argument("--versions", action="store_true")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Import PyPI BigQuery export JSON (distributions / versions) into local SQLite data.db"
+    )
+    parser.add_argument(
+        "--distributions",
+        action="store_true",
+        help="Import distribution metadata (requires_dist, requires_python, sha256, path)",
+    )
+    parser.add_argument(
+        "--versions",
+        action="store_true",
+        help="Import list of known versions (normalized_name, version)",
+    )
+    args = parser.parse_args()
 
-args = parser.parse_args()
+    if not args.versions and not args.distributions:
+        parser.print_help()
+        sys.exit(1)
 
-if not args.versions and not args.distributions:
-    parser.print_help()
-    sys.exit(1)
+    if args.distributions:
+        import_distributions()
 
-if args.distributions:
-    import_distributions()
+    if args.versions:
+        import_versions()
 
-if args.versions:
-    import_versions()
+
+if __name__ == "__main__":
+    main()

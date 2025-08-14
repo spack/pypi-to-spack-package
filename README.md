@@ -5,9 +5,11 @@
 Install this tool in a virtual environment (currently only available from source):
 
 ```console
-$ python -mvenv .venv
+$ mkdir ~/pypi-to-spack-package
+$ cd ~/pypi-to-spack-package
+$ python3 -mvenv .venv
 $ source .venv/bin/activate
-$ pip install "git+http://github.com/spack/pypi-to-spack-package.git#egg=pypi-to-spack-package[dev]"
+$ pip install "git+https://github.com/spack/pypi-to-spack-package.git#egg=pypi-to-spack-package"
 ```
 
 Set up Spack's Python path:

@@ -26,27 +26,24 @@ from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
-# Add guarded Spack imports so users get a clear message if they forgot to set PYTHONPATH.
 try:
-    import spack.package_base  # type: ignore
-    import spack.repo  # type: ignore
-    import spack.util.naming as nm  # type: ignore
-    import spack.version as vn  # type: ignore
-    from spack.error import SpecSyntaxError, UnsatisfiableSpecError  # type: ignore
-    from spack.spec import Spec  # type: ignore
-    from spack.util.naming import pkg_name_to_class_name  # type: ignore
-    from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC  # type: ignore
-    from spack.version.version_types import VersionStrComponent  # type: ignore
-except ImportError as e:  # pragma: no cover
-    if "spack" in str(e).lower():
-        sys.stderr.write(
-            "Spack Python modules not found. Clone Spack and set PYTHONPATH, e.g.\n"
-            "  git clone https://github.com/spack/spack.git ~/spack\n"
-            "  export PYTHONPATH=~/spack/lib/spack\n"
-            "or source ~/spack/share/spack/setup-env.sh before running 'pypi-to-spack'.\n"
-        )
-        sys.exit(1)
-    raise
+    import spack
+except ImportError:
+    print(
+        "Spack Python modules could not be imported, "
+        "make sure $spack/lib/spack is in your PYTHONPATH",
+        file=sys.stderr,
+    )
+
+import spack.package_base
+import spack.repo
+import spack.util.naming as nm
+import spack.version as vn
+from spack.error import SpecSyntaxError, UnsatisfiableSpecError
+from spack.spec import Spec
+from spack.util.naming import pkg_name_to_class_name
+from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC
+from spack.version.version_types import VersionStrComponent
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(

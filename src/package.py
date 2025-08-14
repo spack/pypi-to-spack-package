@@ -22,18 +22,31 @@ from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Type, Union
 
 import packaging.version as pv
-import spack.package_base
-import spack.repo
-import spack.util.naming as nm
-import spack.version as vn
 from packaging.markers import Marker, Op, Value, Variable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from spack.error import UnsatisfiableSpecError, SpecSyntaxError
-from spack.spec import Spec
-from spack.util.naming import pkg_name_to_class_name
-from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC
-from spack.version.version_types import VersionStrComponent
+
+# Add guarded Spack imports so users get a clear message if they forgot to set PYTHONPATH.
+try:
+    import spack.package_base  # type: ignore
+    import spack.repo  # type: ignore
+    import spack.util.naming as nm  # type: ignore
+    import spack.version as vn  # type: ignore
+    from spack.error import SpecSyntaxError, UnsatisfiableSpecError  # type: ignore
+    from spack.spec import Spec  # type: ignore
+    from spack.util.naming import pkg_name_to_class_name  # type: ignore
+    from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC  # type: ignore
+    from spack.version.version_types import VersionStrComponent  # type: ignore
+except ImportError as e:  # pragma: no cover
+    if "spack" in str(e).lower():
+        sys.stderr.write(
+            "Spack Python modules not found. Clone Spack and set PYTHONPATH, e.g.\n"
+            "  git clone https://github.com/spack/spack.git ~/spack\n"
+            "  export PYTHONPATH=~/spack/lib/spack\n"
+            "or source ~/spack/share/spack/setup-env.sh before running 'pypi-to-spack'.\n"
+        )
+        sys.exit(1)
+    raise
 
 # If a marker on python version satisfies this range, we statically evaluate it as true.
 UNSUPPORTED_PYTHON = vn.VersionRange(
@@ -235,11 +248,11 @@ def _intersection(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     """Expand: (a or b) and (c or d) = (a and c) or (a and d) or (b and c) or (b and d)
     where `and` is spec intersection."""
     specs: List[Spec] = []
-    for l in lhs:
-        for r in rhs:
-            intersection = l.copy()
+    for lhs_item in lhs:
+        for rhs_item in rhs:
+            intersection = lhs_item.copy()
             try:
-                intersection.constrain(r)
+                intersection.constrain(rhs_item)
             except UnsatisfiableSpecError:
                 # empty intersection
                 continue
@@ -252,8 +265,8 @@ def _union(lhs: List[Spec], rhs: List[Spec]) -> List[Spec]:
     in case the rhs only expresses constraints on versions."""
     if len(rhs) == 1 and not rhs[0].variants and not rhs[0].architecture:
         python, *_ = rhs[0].dependencies("python")
-        for l in lhs:
-            l.versions.add(python.versions)
+        for lhs_item in lhs:
+            lhs_item.versions.add(python.versions)
         return lhs
 
     return list(set(lhs + rhs))
@@ -569,7 +582,8 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
         if version in version_data:
             copy = next(v for v in version_data if v == version)
             print(
-                f"warning: {name}@={version} and {name}@={copy} are identical, but separately in the PyPI db",
+                f"warning: {name}@={version} and {name}@={copy} are identical,"
+                "but separately in the PyPI db",
                 file=sys.stderr,
             )
             continue
@@ -708,11 +722,11 @@ def _generate(
         node.variants.update(extras)
 
         # Pick at most MAX_VERSIONS versions
-        version_iterator = lambda: (
-            v
-            for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v))
-            if specifier.contains(v, prereleases=True)
-        )
+        def version_iterator():
+            for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v)):
+                if specifier.contains(v, prereleases=True):
+                    yield v
+
         if not no_new_versions or name not in usable_versions:
             # Generate new versions
             used_versions = [v for v, _ in zip(version_iterator(), range(MAX_VERSIONS))]
@@ -954,7 +968,7 @@ def dump_requirements(
         for version in pkg.versions:
             try:
                 pv.Version(str(version))
-            except:
+            except Exception:
                 skip.append(f"{pypi_name}=={version}")
                 continue
             print(f"{pypi_name}{variants} =={version}", file=f)
@@ -1110,7 +1124,7 @@ def export_repo(repo_in: str, repo_out: str):
 
         lines.insert(
             delete[-1],
-            "\n".join(l for l in ("\n".join(versions), "\n".join(variants), "\n".join(deps)) if l),
+            "\n".join(x for x in ("\n".join(versions), "\n".join(variants), "\n".join(deps)) if x),
         )
 
         with open(out_package, "w") as f:

@@ -150,7 +150,8 @@ def import_distributions(path="pypi-distributions"):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Import PyPI BigQuery export JSON (distributions / versions) into local SQLite data.db"
+        description="Import PyPI BigQuery export JSON (distributions / versions) into local"
+        "SQLite data.db"
     )
     parser.add_argument(
         "--distributions",

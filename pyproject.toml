@@ -32,9 +32,9 @@ dependencies = [
 
 [project.scripts]
 # Main generator / exporter CLI
-pypi-to-spack = "package:main"
+pypi-to-spack = "pypi_to_spack_package.generator:main"
 # Database import CLI
-pypi-to-spack-import = "import_db:main"
+pypi-to-spack-import = "pypi_to_spack_package.import_db:main"
 
 [project.urls]
 Homepage = "https://github.com/spack/pypi-to-spack-package"
@@ -51,12 +51,10 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-# Rely on implicit discovery (any top-level modules in src). If later you convert to a package
-# directory (e.g. src/pypi_to_spack/), update find options below.
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["*"]
+include = ["pypi_to_spack_package*"]
 
 [tool.black]
 line-length = 99

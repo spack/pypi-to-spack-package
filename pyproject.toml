@@ -1,12 +1,72 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pypi-to-spack-package"
+version = "0.1.0"
+description = "Generate Spack package.py files from PyPI metadata."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Apache-2.0 OR MIT" }
+authors = [ { name = "Harmen Stoppels" } ]
+keywords = ["spack", "pypi", "packaging", "dependency", "generator"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+  "packaging"
+]
+
+[project.scripts]
+# Main generator / exporter CLI
+pypi-to-spack = "package:main"
+# Database import CLI
+pypi-to-spack-import = "import_db:main"
+
+[project.urls]
+Homepage = "https://github.com/spack/pypi-to-spack-package"
+Repository = "https://github.com/spack/pypi-to-spack-package"
+Issues = "https://github.com/spack/pypi-to-spack-package/issues"
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.0.0",
+  "isort>=5.12.0",
+  "pytest>=7.0",
+  "pyright>=1.1.380; platform_system != 'Windows'",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+# Rely on implicit discovery (any top-level modules in src). If later you convert to a package
+# directory (e.g. src/pypi_to_spack/), update find options below.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+
 [tool.black]
 line-length = 99
 target-version = ['py36', 'py37', 'py38', 'py39', 'py310']
-skip_magic_trailing_comma = true
+skip-magic-trailing-comma = true
 
 [tool.isort]
 line_length = 99
 profile = "black"
 honor_noqa = true
 
-[pytest]
+[tool.pytest.ini_options]
 testpaths = ["tests"]

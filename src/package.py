@@ -1159,7 +1159,7 @@ def main():
     parser_export.add_argument(
         "--output",
         help="Output repo that contains repo.yaml (default: Spack builtin)",
-        default=spack.paths.packages_path,
+        default=spack.repo.PATH.get_repo("builtin").root,
     )
     subparsers.add_parser("info", help="Show basic info about database or package")
 
@@ -1229,7 +1229,7 @@ def main():
 
         if not (output_dir / "repo.yaml").exists():
             with open(output_dir / "repo.yaml", "w") as f:
-                f.write("repo:\n  namespace: python\n")
+                f.write("repo:\n  namespace: python\n  api: v2.0\n")
 
         for name, node in graph.items():
             spack_name = f"{SPACK_PREFIX}{name}"
@@ -1237,7 +1237,7 @@ def main():
             package_dir.mkdir(parents=True, exist_ok=True)
             with open(package_dir / "package.py", "w") as f:
                 f.write(HEADER)
-                print(f"class {mod_to_class(spack_name)}(PythonPackage):", file=f)
+                print(f"class {pkg_name_to_class_name(spack_name)}(PythonPackage):", file=f)
                 _print_package(name, node, f)
 
 

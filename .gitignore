@@ -1,10 +1,23 @@
 .env
 __pycache__
 
+# Project build / metadata artifacts
+*.egg-info/
+build/
+dist/
+
 /repo
 
 *.db
 *.json
 *.zst
 *.gz
+
+# Virtual envs
+.venv/
+
+# Test / tooling caches
+.pytest_cache/
+.coverage
+.mypy_cache/
 

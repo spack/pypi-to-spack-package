@@ -11,12 +11,21 @@ import json
 import os
 import sqlite3
 import sys
+import gc
+
+gc.disable()
 
 MOVE_UP = "\033[1A"
 CLEAR_LINE = "\x1b[2K"
 
-conn = sqlite3.connect("data.db")
+conn = sqlite3.connect("data.db", isolation_level=None)
 c = conn.cursor()
+
+# Optimize for bulk inserts
+c.execute("PRAGMA journal_mode = WAL")
+c.execute("PRAGMA synchronous = NORMAL")
+c.execute("PRAGMA cache_size = -64000")  # 64MB cache
+c.execute("PRAGMA temp_store = MEMORY")
 
 
 c.execute(
@@ -65,7 +74,6 @@ def insert_versions(entries):
     """,
         entries,
     )
-    conn.commit()
 
 
 def insert_distributions(entries):
@@ -81,7 +89,6 @@ def insert_distributions(entries):
     """,
         entries,
     )
-    conn.commit()
 
 
 def import_versions(path="pypi-versions"):
@@ -92,6 +99,7 @@ def import_versions(path="pypi-versions"):
     files = sorted(os.listdir(path))
     total_lines = 0
     total_files = len(files)
+    c.execute("BEGIN")
     for j, file in enumerate(files):
         with gzip.open(os.path.join(path, file), "rb") as f:
             lines = f.readlines()
@@ -105,9 +113,15 @@ def import_versions(path="pypi-versions"):
                 if i % 10000 == 0:
                     insert_versions(entries)
                     entries = []
+                    # Commit less frequently for better performance
+                    if i % 100000 == 0:
+                        c.execute("COMMIT")
+                        c.execute("BEGIN")
                     percent = int(i / lines_estimate * 100)
                     print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
-    insert_versions(entries)
+    if entries:
+        insert_versions(entries)
+    c.execute("COMMIT")
     sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 
@@ -119,6 +133,7 @@ def import_distributions(path="pypi-distributions"):
     files = sorted(os.listdir(path))
     total_lines = 0
     total_files = len(files)
+    c.execute("BEGIN")
     for j, file in enumerate(files):
         with gzip.open(os.path.join(path, file), "rb") as f:
             lines = f.readlines()
@@ -142,9 +157,15 @@ def import_distributions(path="pypi-distributions"):
                 if i % 10000 == 0:
                     insert_distributions(entries)
                     entries = []
+                    # Commit less frequently for better performance
+                    if i % 100000 == 0:
+                        c.execute("COMMIT")
+                        c.execute("BEGIN")
                     percent = int(i / lines_estimate * 100)
                     print(f"{MOVE_UP}{CLEAR_LINE}[{percent:3}%] {file}: {i}")
-    insert_distributions(entries)
+    if entries:
+        insert_distributions(entries)
+    c.execute("COMMIT")
     sys.stdout.write(f"{MOVE_UP}{CLEAR_LINE}")
 
 

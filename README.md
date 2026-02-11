@@ -46,6 +46,7 @@ Notice that by default, this command will do *trivial* package bumps. This means
 
 * no changes to runtime dependencies are required (based on `Requires-Dist` fields in the PyPI metadata)
 * no changes to the Python version compatibility are required (based on `Requires-Python` fields in the PyPI metadata)
+* the package does not depend on `c`, `cxx`, `fortran` or `rust`
 
 ```console
 $ pypi-to-spack-bump

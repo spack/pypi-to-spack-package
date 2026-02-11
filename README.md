@@ -1,12 +1,12 @@
 # PyPI to [Spack](https://www.github.com/spack/spack) `package.py`
 
+This project provides basic tools to do trivial Python package version bumps in Spack.
+
 ## Quick start
 
 Install this tool in a virtual environment (currently only available from source):
 
 ```console
-$ mkdir ~/pypi-to-spack-package
-$ cd ~/pypi-to-spack-package
 $ python3 -mvenv .venv
 $ source .venv/bin/activate
 $ pip install "git+https://github.com/spack/pypi-to-spack-package.git#egg=pypi-to-spack-package"
@@ -18,16 +18,43 @@ Set up Spack's Python path:
 $ export PYTHONPATH=$spack/lib/spack
 ```
 
-Run it:
+## Fetching the latest PyPI data 
 
+Use the `pypi-to-spack-import` command to fetch the latest PyPI data from the public BigQuery dataset and import it into a local SQLite database.
+
+You need a Google Cloud project and a GCS bucket to store the intermediate BigQuery exports, which you can set up with the following commands:
+
+```console
+$ gcloud projects create YOUR_PROJECT_ID
+$ gcloud services enable bigquery.googleapis.com --project=YOUR_PROJECT_ID
+$ gsutil mb -p YOUR_PROJECT_ID gs://YOUR_BUCKET
 ```
-$ pypi-to-spack info
+
+Then, run the import command:
+
+```console
+$ pypi-to-spack-import --bucket YOUR_BUCKET
 ```
 
-There are two entry points provided after installation:
+This will create a SQLite database file named `data.db` in the current directory, containing the tables `versions` and `distributions` with the latest PyPI data.
 
-* `pypi-to-spack`: generate and update package.py files.
-* `pypi-to-spack-import`: import and refresh the local SQLite database from BigQuery exports.
+## Updating `package.py` files for existing Spack packages
+
+Use the `pypi-to-spack-bump` command to update the `package.py` files for existing Spack packages based on the latest PyPI data.
+
+Notice that by default, this command will do *trivial* package bumps. This means that the latest version is added, if:
+
+* no changes to runtime dependencies are required (based on `Requires-Dist` fields in the PyPI metadata)
+* no changes to the Python version compatibility are required (based on `Requires-Python` fields in the PyPI metadata)
+
+```console
+$ pypi-to-spack-bump
+```
+
+# Generating a full Spack repository from PyPI
+
+> [!WARNING]
+> This feature is currently not as useful, because it's non-trivial to sync a generated repository with the builtin Spack repo, but it can be used to generate a full Spack repository from scratch, or to generate new versions for existing Spack packages.
 
 ## Inputs
 
@@ -130,92 +157,6 @@ exact same versions, use `pypi-to-spack generate --no-new-versions`)
     a version list. So, I have not implemented this.
   - ❌ The variables `os_name`, `platform_machine`, `platform_release`, `platform_version`,
     `implementation_version` are still not implemented (some cannot be?).
-
-## Importing / rebuilding the PyPI database manually
-
-If you want to build the database from scratch instead of using the published snapshot, use the
-`pypi-to-spack-import` tool. Below are the BigQuery export steps.
-
-1. Go to https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=pypi&page=dataset
-2. Run the following query
-
-   ```sql
-   EXPORT DATA OPTIONS(
-     compression="GZIP",
-     uri="gs://<bucket>/pypi-distributions/pypi-*.json.gz",
-     format="JSON",
-     overwrite=true
-   )
-
-   AS
-
-   SELECT
-     -- https://packaging.python.org/en/latest/specifications/name-normalization/
-     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") AS normalized_name,
-     x.version,
-     x.requires_dist,
-     x.requires_python,
-     x.sha256_digest,
-     x.path
-
-   FROM `bigquery-public-data.pypi.distribution_metadata` AS x
-
-   -- Do not use a universal wheel if there are platform specific wheels (e.g. black can be built
-   -- both binary and pure python, in that case prefer sdist)
-   LEFT JOIN `bigquery-public-data.pypi.distribution_metadata` AS y ON (
-     REGEXP_REPLACE(LOWER(x.name), "[-_.]+", "-") = REGEXP_REPLACE(LOWER(y.name), "[-_.]+", "-")
-     AND x.version = y.version
-     AND x.packagetype = "bdist_wheel"
-     AND y.packagetype = "bdist_wheel"
-     AND y.path NOT LIKE "%-none-any.whl"
-   )
-
-   -- Select sdist and universal wheels
-   WHERE (
-     x.packagetype = "sdist"
-     OR x.path LIKE "%py3-none-any.whl"
-   ) AND y.name IS NULL
-   -- AND x.upload_time >= "2024-03-01" -- If you already have a db, set this to last time fetched
-
-   -- Only pick the last (re)upload of (name, version, packagetype) tuples
-   QUALIFY ROW_NUMBER() OVER (
-     PARTITION BY normalized_name, x.version, x.packagetype
-     ORDER BY x.upload_time DESC
-   ) = 1
-
-   -- If there are both universal wheels and sdist, pick the wheel
-   AND ROW_NUMBER() OVER (
-     PARTITION BY normalized_name, x.version
-     ORDER BY CASE WHEN x.packagetype = 'bdist_wheel' THEN 0 ELSE 1 END
-   ) = 1
-   ```
-   which should say something like "Successfully exported 5804957 rows into 101 files".
-
-3. Also make an export of all known versions:
-
-   ```sql
-   EXPORT DATA OPTIONS(
-     compression="GZIP",
-     uri="gs://<bucket>/pypi-versions/pypi-*.json.gz",
-     format="JSON",
-     overwrite=true
-   )
-
-   AS
-
-   SELECT
-     REGEXP_REPLACE(LOWER(name), "[-_.]+", "-") AS normalized_name,
-     version
-   FROM `bigquery-public-data.pypi.distribution_metadata`
-   GROUP BY normalized_name, version
-   ```
-4. Download the files using:
-   ```console
-   $ gsutil -m cp -r gs://<bucket>/pypi-distributions .
-   $ gsutil -m cp -r gs://<bucket>/pypi-versions .
-   ```
-5. Run `pypi-to-spack-import --versions --distributions` to import into SQLite.
-
 
 ## License
 

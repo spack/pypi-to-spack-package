@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pypi-to-spack-package"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generate Spack package.py files from PyPI metadata."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -27,14 +27,15 @@ classifiers = [
   "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
-  "packaging"
+  "packaging",
+  "google-cloud-bigquery>=3.0.0",
+  "google-cloud-storage>=2.0.0",
 ]
 
 [project.scripts]
-# Main generator / exporter CLI
-pypi-to-spack = "pypi_to_spack_package.generator:main"
-# Database import CLI
-pypi-to-spack-import = "pypi_to_spack_package.import_db:main"
+pypi-to-spack-generate-repo = "pypi_to_spack_package.generator:main"
+pypi-to-spack-fetch = "pypi_to_spack_package.fetch_bigquery_data:main"
+pypi-to-spack-bump = "pypi_to_spack_package.update_versions:main"
 
 [project.urls]
 Homepage = "https://github.com/spack/pypi-to-spack-package"

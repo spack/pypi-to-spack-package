@@ -41,7 +41,7 @@ import spack.util.naming as nm
 import spack.version as vn
 from spack.error import SpecSyntaxError, UnsatisfiableSpecError
 from spack.spec import Spec
-from spack.util.naming import pkg_name_to_class_name
+from spack.util.naming import pkg_name_to_class_name, pkg_name_to_pkg_dir
 from spack.version.common import ALPHA, BETA, FINAL, PRERELEASE_TO_STRING, RC
 from spack.version.version_types import VersionStrComponent
 
@@ -1256,7 +1256,7 @@ def main():
 
         for name, node in graph.items():
             spack_name = f"{SPACK_PREFIX}{name}"
-            package_dir = packages_dir / spack_name
+            package_dir = packages_dir / pkg_name_to_pkg_dir(spack_name, (2, 0))
             package_dir.mkdir(parents=True, exist_ok=True)
             with open(package_dir / "package.py", "w") as f:
                 f.write(HEADER)

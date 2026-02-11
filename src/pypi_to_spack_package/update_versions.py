@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import itertools
 import os
 import re
 import sqlite3
@@ -82,9 +83,13 @@ def find_updates(db_path="data.db"):
     cursor = conn.cursor()
 
     # Get all Python packages from Spack
-    print("Loading Spack packages...")
-    all_spack_packages = spack.repo.PATH.all_package_names()
-    python_packages = [pkg for pkg in all_spack_packages if pkg.startswith("py-")]
+    print("Loading Spack Python packages that don't depend on c, cxx, fortran, rust...")
+    disallowed_deps = {"rust", "c", "cxx", "fortran"}
+    python_packages = [
+        pkg.name for pkg in spack.repo.PATH.all_package_classes()
+        if pkg.name.startswith("py-")
+        and disallowed_deps.isdisjoint(itertools.chain.from_iterable(pkg.dependencies.values()))
+    ]
 
     print(f"Found {len(python_packages)} Python packages in Spack\n")
 

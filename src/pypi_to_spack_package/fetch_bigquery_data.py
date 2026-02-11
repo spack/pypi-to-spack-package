@@ -94,10 +94,12 @@ GROUP BY normalized_name, version
 """
 
 
-def run_bigquery_export(project_id, bucket, query, query_name, upload_time_filter="", use_where=False):
+def run_bigquery_export(
+    project_id, bucket, query, query_name, upload_time_filter="", use_where=False
+):
     """Run a BigQuery export query and wait for completion."""
     client = bigquery.Client(project=project_id) if project_id else bigquery.Client()
-    
+
     # Format the query with bucket name and optional time filter
     if upload_time_filter:
         if use_where:
@@ -106,34 +108,34 @@ def run_bigquery_export(project_id, bucket, query, query_name, upload_time_filte
             upload_time_filter = f'\nAND x.upload_time >= "{upload_time_filter}"'
     else:
         upload_time_filter = ""
-    
+
     formatted_query = query.format(bucket=bucket, upload_time_filter=upload_time_filter)
-    
+
     print(f"Running {query_name} export query...")
     print(f"Destination: gs://{bucket}/")
-    
+
     try:
         query_job = client.query(formatted_query)
-        
+
         # Wait for the job to complete
         print("Waiting for export to complete...")
         while not query_job.done():
             time.sleep(5)
             print(".", end="", flush=True)
-        
+
         print("\n")
-        
+
         # Check for errors
         if query_job.errors:
             print(f"Errors occurred: {query_job.errors}", file=sys.stderr)
             return False
-        
+
         print(f"✓ {query_name} export completed successfully")
         if query_job.num_dml_affected_rows:
             print(f"  Exported {query_job.num_dml_affected_rows} rows")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"Error running query: {e}", file=sys.stderr)
         return False
@@ -143,32 +145,32 @@ def download_gcs_files(bucket, prefix, destination, cleanup_gcs=True):
     """Download files from Google Cloud Storage."""
     storage_client = storage.Client()
     bucket_obj = storage_client.bucket(bucket)
-    
+
     # List all files with the prefix
     blobs = list(bucket_obj.list_blobs(prefix=prefix))
-    
+
     if not blobs:
         print(f"No files found at gs://{bucket}/{prefix}", file=sys.stderr)
         return False
-    
+
     print(f"Downloading {len(blobs)} files from gs://{bucket}/{prefix}...")
-    
+
     # Clear and recreate destination directory
     if os.path.exists(destination):
         print(f"Clearing existing directory: {destination}/")
         shutil.rmtree(destination)
     os.makedirs(destination)
-    
+
     for i, blob in enumerate(blobs, 1):
         filename = os.path.basename(blob.name)
         dest_path = os.path.join(destination, filename)
-        
+
         print(f"[{i}/{len(blobs)}] {filename}", end="", flush=True)
         blob.download_to_filename(dest_path)
         print(" ✓")
-    
+
     print(f"✓ Downloaded all files to {destination}/")
-    
+
     # Delete files from GCS to save costs
     if cleanup_gcs:
         print(f"\nDeleting files from gs://{bucket}/{prefix}...")
@@ -177,39 +179,35 @@ def download_gcs_files(bucket, prefix, destination, cleanup_gcs=True):
             blob.delete()
             print(" ✓")
         print(f"✓ Cleaned up GCS bucket")
-    
+
     return True
 
 
 def download_using_gsutil(bucket, prefix, destination, cleanup_gcs=True):
     """Fallback: download files using gsutil command."""
     print(f"Downloading files using gsutil...")
-    
+
     # Clear and recreate destination directory
     if os.path.exists(destination):
         print(f"Clearing existing directory: {destination}/")
         shutil.rmtree(destination)
     os.makedirs(destination)
-    
+
     # Use wildcard to copy files, not the directory itself
-    cmd = [
-        "gsutil", "-m", "cp",
-        f"gs://{bucket}/{prefix}/*",
-        destination
-    ]
-    
+    cmd = ["gsutil", "-m", "cp", f"gs://{bucket}/{prefix}/*", destination]
+
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(result.stdout)
         print(f"✓ Downloaded files to {destination}/")
-        
+
         # Delete files from GCS to save costs
         if cleanup_gcs:
             print(f"\nDeleting files from gs://{bucket}/{prefix}...")
             rm_cmd = ["gsutil", "-m", "rm", "-r", f"gs://{bucket}/{prefix}"]
             subprocess.run(rm_cmd, check=True, capture_output=True, text=True)
             print(f"✓ Cleaned up GCS bucket")
-        
+
         return True
     except subprocess.CalledProcessError as e:
         print(f"Error running gsutil: {e}", file=sys.stderr)
@@ -223,7 +221,7 @@ def download_using_gsutil(bucket, prefix, destination, cleanup_gcs=True):
 def import_to_database(distributions=True, versions=True):
     """Import downloaded data into SQLite database."""
     print("\nImporting data into SQLite database...")
-    
+
     # Import the import_db module
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
     try:
@@ -231,13 +229,13 @@ def import_to_database(distributions=True, versions=True):
     except ImportError:
         print("Could not import import_db module", file=sys.stderr)
         return False
-    
+
     if distributions:
         import_db.import_distributions()
-    
+
     if versions:
         import_db.import_versions()
-    
+
     print("✓ Import completed")
     return True
 
@@ -279,18 +277,18 @@ def main():
         action="store_true",
         help="Skip importing into SQLite database",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Validate date format
     try:
         datetime.strptime(args.since, "%Y-%m-%d")
     except ValueError:
         print("Invalid date format. Use YYYY-MM-DD", file=sys.stderr)
         sys.exit(1)
-    
+
     success = True
-    
+
     # Run BigQuery exports
     if args.distributions:
         if not run_bigquery_export(
@@ -302,7 +300,7 @@ def main():
             use_where=False,
         ):
             success = False
-    
+
     if args.versions and success:
         if not run_bigquery_export(
             args.project,
@@ -313,35 +311,37 @@ def main():
             use_where=True,
         ):
             success = False
-    
+
     if not success:
         print("\nExport failed", file=sys.stderr)
         sys.exit(1)
-    
+
     # Download files
     print("\n" + "=" * 80)
     print("DOWNLOADING FILES")
     print("=" * 80 + "\n")
-    
+
     if args.distributions:
-        success = download_using_gsutil(args.bucket, "pypi-distributions", "pypi-distributions")
+        success = download_using_gsutil(
+            args.bucket, "pypi-distributions", "pypi-distributions"
+        )
         if not success:
             sys.exit(1)
-    
+
     if args.versions:
         success = download_using_gsutil(args.bucket, "pypi-versions", "pypi-versions")
         if not success:
             sys.exit(1)
-    
+
     # Import to database
     if not args.no_import:
         print("\n" + "=" * 80)
         print("IMPORTING TO DATABASE")
         print("=" * 80 + "\n")
-        
+
         if not import_to_database(args.distributions, args.versions):
             sys.exit(1)
-    
+
     print("\n" + "=" * 80)
     print("✓ ALL OPERATIONS COMPLETED SUCCESSFULLY")
     print("=" * 80)

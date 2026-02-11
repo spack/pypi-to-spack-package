@@ -95,8 +95,10 @@ class VersionsLookup:
 
     def _query(self, name: str) -> List[pv.Version]:
         # Todo, de-duplicate identical versions e.g. "3.7.0" and "3.7".
-        query = self.cursor.execute("SELECT version FROM versions WHERE name = ?", (name,))
-        return sorted({vv for v, in query if (vv := _acceptable_version(v))})
+        query = self.cursor.execute(
+            "SELECT version FROM versions WHERE name = ?", (name,)
+        )
+        return sorted({vv for (v,) in query if (vv := _acceptable_version(v))})
 
     def _python_versions(self) -> List[pv.Version]:
         return [
@@ -136,7 +138,9 @@ def _eval_python_version_marker(
     return _pkg_specifier_set_to_version_list("python", specifier, version_lookup)
 
 
-def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None, bool, List[Spec]]:
+def _eval_constraint(
+    node: tuple, version_lookup: VersionsLookup
+) -> Union[None, bool, List[Spec]]:
     # TODO: os_name, platform_machine, platform_release, platform_version, implementation_version
 
     # Operator
@@ -185,7 +189,10 @@ def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None,
             return [
                 Spec(f"platform={p}")
                 for p in platforms
-                if p != platform and op.value == "!=" or p == platform and op.value == "=="
+                if p != platform
+                and op.value == "!="
+                or p == platform
+                and op.value == "=="
             ]
         return op.value == "!="  # we don't support it, so statically true/false.
 
@@ -199,7 +206,10 @@ def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None,
             return [
                 Spec(f"platform={p}")
                 for p in platforms
-                if p != platform and op.value == "!=" or p == platform and op.value == "=="
+                if p != platform
+                and op.value == "!="
+                or p == platform
+                and op.value == "=="
             ]
         return op.value == "!="  # we don't support it, so statically true/false.
 
@@ -217,7 +227,9 @@ def _eval_constraint(node: tuple, version_lookup: VersionsLookup) -> Union[None,
     if variable.value not in ("python_version", "python_full_version"):
         return None
 
-    versions = _eval_python_version_marker(variable.value, op.value, value.value, version_lookup)
+    versions = _eval_python_version_marker(
+        variable.value, op.value, value.value, version_lookup
+    )
 
     if versions is None:
         return None
@@ -326,7 +338,9 @@ def _do_evaluate_marker(
     return lhs
 
 
-def _evaluate_marker(m: Marker, version_lookup: VersionsLookup) -> Union[bool, None, List[Spec]]:
+def _evaluate_marker(
+    m: Marker, version_lookup: VersionsLookup
+) -> Union[bool, None, List[Spec]]:
     """Evaluate the marker expression tree either (1) as a list of specs that constitute the when
     conditions, (2) statically as True or False given that we only support cpython, (3) None if
     we can't translate it into Spack DSL."""
@@ -337,7 +351,9 @@ def _normalized_name(name):
     return re.sub(NAME_REGEX, "-", name).lower()
 
 
-def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.StandardVersion:
+def _best_upperbound(
+    curr: vn.StandardVersion, next: vn.StandardVersion
+) -> vn.StandardVersion:
     """Return the most general upperound that includes curr but not next. Invariant is that
     curr < next."""
     i = 0
@@ -346,7 +362,9 @@ def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.S
         i += 1
     if i == len(curr) < len(next):
         release, _ = curr.version
-        release += (0,)  # one zero should be enough 1.2 and 1.2.0 are not distinct in packaging.
+        release += (
+            0,
+        )  # one zero should be enough 1.2 and 1.2.0 are not distinct in packaging.
         seperators = (".",) * (len(release) - 1) + ("",)
         as_str = ".".join(str(x) for x in release)
         return vn.StandardVersion(as_str, (tuple(release), (FINAL,)), seperators)
@@ -356,7 +374,9 @@ def _best_upperbound(curr: vn.StandardVersion, next: vn.StandardVersion) -> vn.S
         return curr.up_to(i + 1)
 
 
-def _best_lowerbound(prev: vn.StandardVersion, curr: vn.StandardVersion) -> vn.StandardVersion:
+def _best_lowerbound(
+    prev: vn.StandardVersion, curr: vn.StandardVersion
+) -> vn.StandardVersion:
     i = 0
     m = min(len(curr), len(prev))
     while i < m and curr.version[0][i] == prev.version[0][i]:
@@ -409,7 +429,9 @@ def _packaging_to_spack_version(v: pv.Version) -> vn.StandardVersion:
         if v.post is not None:
             release.extend((VersionStrComponent("post"), v.post))
             separators.extend((".", ""))
-        if v.dev is not None:  # dev is actually pre-release like, spack makes it a post-release.
+        if (
+            v.dev is not None
+        ):  # dev is actually pre-release like, spack makes it a post-release.
             release.extend((VersionStrComponent("dev"), v.dev))
             separators.extend((".", ""))
         if v.local is not None:
@@ -499,7 +521,9 @@ def _pkg_specifier_set_to_version_list(
         return evalled[key]
     all = version_lookup[pkg]
     matching = [s for s in all if specifier_set.contains(s, prereleases=True)]
-    result = vn.VersionList() if not matching else _condensed_version_list(matching, all)
+    result = (
+        vn.VersionList() if not matching else _condensed_version_list(matching, all)
+    )
     evalled[key] = result
     return result
 
@@ -531,7 +555,10 @@ def download_db():
                     break
                 f.write(chunk)
                 written += len(chunk)
-                print(f"{MOVE_UP}{CLEAR_LINE}Written {written // (1024*1024)}MB", file=sys.stderr)
+                print(
+                    f"{MOVE_UP}{CLEAR_LINE}Written {written // (1024 * 1024)}MB",
+                    file=sys.stderr,
+                )
 
     sys.stderr.write(f"{MOVE_UP}{CLEAR_LINE}")
     print("Download completed!", file=sys.stderr)
@@ -545,7 +572,10 @@ def _validate_requirements(
         try:
             r = Requirement(requirement_str)
         except InvalidRequirement:
-            print(f"{name}@{version}: invalid requirement {requirement_str}", file=sys.stderr)
+            print(
+                f"{name}@{version}: invalid requirement {requirement_str}",
+                file=sys.stderr,
+            )
             return None
 
         # Normalize the name for good measture
@@ -624,7 +654,9 @@ def _get_node(name: str, sqlite_cursor: sqlite3.Cursor, version_lookup: Versions
             python_versions = vn.any_version
 
         # go over the edges
-        requirements = _validate_requirements(name, version, requires_dist, version_lookup)
+        requirements = _validate_requirements(
+            name, version, requires_dist, version_lookup
+        )
 
         # Invalid requirements, skip this version.
         if requirements is None:
@@ -716,7 +748,10 @@ def _generate(
     while queue:
         i += 1
         name, specifier, extras, depth = queue.pop()
-        print(f"[{i:5}/{i+len(queue):5}] {' ' * depth}{name} {specifier}", file=sys.stderr)
+        print(
+            f"[{i:5}/{i + len(queue):5}] {' ' * depth}{name} {specifier}",
+            file=sys.stderr,
+        )
         # Populate package info if we haven't seen it yet.
         if name not in graph:
             node = Node()
@@ -732,7 +767,9 @@ def _generate(
 
         # Pick at most MAX_VERSIONS versions
         def version_iterator():
-            for v in sorted(node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v)):
+            for v in sorted(
+                node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v)
+            ):
                 if specifier.contains(v, prereleases=True):
                     yield v
 
@@ -745,12 +782,16 @@ def _generate(
                 for v in sorted(
                     node.versions, reverse=True, key=lambda v: (not v.is_prerelease, v)
                 )
-                if specifier.contains(v, prereleases=True) and v in usable_versions[name]
+                if specifier.contains(v, prereleases=True)
+                and v in usable_versions[name]
             ]
 
             if not used_versions:
                 used_versions = [v for v, _ in zip(version_iterator(), range(1))]
-                print(f"{name} {specifier}: adding {used_versions} instead", file=sys.stderr)
+                print(
+                    f"{name} {specifier}: adding {used_versions} instead",
+                    file=sys.stderr,
+                )
 
         node.used_versions.update(used_versions)
 
@@ -780,10 +821,9 @@ def _generate(
     # distinct specifiers may lead to the same spec constraint, e.g. >3 and >=3 if there is no
     # version exactly 3.
     for name, node in graph.items():
-
-        dep_to_when: Dict[Tuple[Spec, Optional[Marker], Optional[Spec]], Set[pv.Version]] = (
-            defaultdict(set)
-        )
+        dep_to_when: Dict[
+            Tuple[Spec, Optional[Marker], Optional[Spec]], Set[pv.Version]
+        ] = defaultdict(set)
         for (child, specifier, extras), data in node.edges.items():
             # Skip specifiers for which we don't have the versions and variants.
             if not any(
@@ -797,7 +837,9 @@ def _generate(
             spec = Spec(f"{SPACK_PREFIX}{child}{variants}")
             spec.versions = _pkg_specifier_set_to_version_list(child, specifier, lookup)
 
-            to_add: List[Tuple[Tuple[Spec, Optional[Marker], Optional[Spec]], pv.Version]] = []
+            to_add: List[
+                Tuple[Tuple[Spec, Optional[Marker], Optional[Spec]], pv.Version]
+            ] = []
             for version, marker, marker_specs in data:
                 if isinstance(marker_specs, list):
                     for marker_spec in marker_specs:
@@ -807,7 +849,10 @@ def _generate(
                     to_add.append(((spec, marker, None), version))
 
             if to_add and not spec.versions:
-                print(f"{name} -> {child} {specifier} has no matching versions", file=sys.stderr)
+                print(
+                    f"{name} -> {child} {specifier} has no matching versions",
+                    file=sys.stderr,
+                )
                 spec.versions = vn.any_version
 
             for key, value in to_add:
@@ -835,7 +880,8 @@ def _generate(
                     _make_when_spec(
                         marker_spec,
                         _condensed_version_list(
-                            versions.intersection(versions_we_care_about), versions_we_care_about
+                            versions.intersection(versions_we_care_about),
+                            versions_we_care_about,
                         ),
                     ),
                     marker,
@@ -858,12 +904,14 @@ def _generate(
                 python, *_ = pythons
                 return (*parts, python.name, python.versions, python.variants)
 
-        node.children.sort(key=lambda x: (x[0]), reverse=True)
+        node.children.sort(key=lambda x: x[0], reverse=True)
         node.children.sort(key=when_spec_key, reverse=True)
-        node.children.sort(key=lambda x: (x[0].name))
+        node.children.sort(key=lambda x: x[0].name)
 
         # Prepend dependencies on Python versions.
-        for python_constraints, versions in sorted(node.pythons.items(), key=lambda x: x[0]):
+        for python_constraints, versions in sorted(
+            node.pythons.items(), key=lambda x: x[0]
+        ):
             if versions.isdisjoint(node.used_versions):
                 continue
             when_spec = Spec()
@@ -899,7 +947,9 @@ def _print_package(name: str, node: Node, f: io.StringIO):
     print(file=f)
     print("    # BEGIN VARIANTS", file=f)
     for variant in sorted(node.variants):
-        print(f'    variant("{variant}", default=False, description="{variant}")', file=f)
+        print(
+            f'    variant("{variant}", default=False, description="{variant}")', file=f
+        )
     print("    # END VARIANTS", file=f)
     if node.variants:
         print(file=f)
@@ -942,14 +992,21 @@ def _print_package(name: str, node: Node, f: io.StringIO):
 
 
 def is_pypi(pkg: Type[spack.package_base.PackageBase], c: sqlite3.Cursor):
-    if not any(base.__name__ in ("PythonPackage", "PythonExtension") for base in pkg.__bases__):
+    if not any(
+        base.__name__ in ("PythonPackage", "PythonExtension") for base in pkg.__bases__
+    ):
         return False
     name = pkg.name[3:] if pkg.name.startswith("py-") else pkg.name
-    return c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone() is not None
+    return (
+        c.execute("SELECT * FROM versions WHERE name = ?", (name,)).fetchone()
+        is not None
+    )
 
 
 def dump_requirements(
-    cursor: sqlite3.Cursor, new_pkgs: Optional[Set[str]] = None, f: io.StringIO = sys.stdout
+    cursor: sqlite3.Cursor,
+    new_pkgs: Optional[Set[str]] = None,
+    f: io.StringIO = sys.stdout,
 ):
     """Dump all Spack packages are requirements to a file."""
     count = 0
@@ -1031,7 +1088,9 @@ def export_repo(repo_in: str, repo_out: str):
                 + 1 : contents.index(end_variants)
             ].split("\n")
             deps = contents[
-                contents.index(begin_deps) + len(begin_deps) + 1 : contents.index(end_deps)
+                contents.index(begin_deps) + len(begin_deps) + 1 : contents.index(
+                    end_deps
+                )
             ].split("\n")
             assert versions
         except (ValueError, AssertionError):
@@ -1108,7 +1167,9 @@ def export_repo(repo_in: str, repo_out: str):
                     # Preserve variants from the original package as they contain a description.
                     for i, line in enumerate(variants):
                         if pattern in line:
-                            variants[i] = "\n".join(lines[expr.lineno - 1 : expr.end_lineno])
+                            variants[i] = "\n".join(
+                                lines[expr.lineno - 1 : expr.end_lineno]
+                            )
                 # Remove patch files
                 if expr.func.id == "patch":
                     arg = expr.args[0]
@@ -1133,7 +1194,11 @@ def export_repo(repo_in: str, repo_out: str):
 
         lines.insert(
             delete[-1],
-            "\n".join(x for x in ("\n".join(versions), "\n".join(variants), "\n".join(deps)) if x),
+            "\n".join(
+                x
+                for x in ("\n".join(versions), "\n".join(variants), "\n".join(deps))
+                if x
+            ),
         )
 
         with open(out_package, "w") as f:
@@ -1145,17 +1210,24 @@ def main():
     parser = argparse.ArgumentParser(
         prog="PyPI to Spack package.py", description="Convert PyPI data to Spack data"
     )
-    parser.add_argument("--db", default="data.db", help="The PyPI sqlite database to read from")
+    parser.add_argument(
+        "--db", default="data.db", help="The PyPI sqlite database to read from"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     parser_generate = subparsers.add_parser(
-        "generate", help="Generate package.py files from spack_requirements.txt [step 2]"
+        "generate",
+        help="Generate package.py files from spack_requirements.txt [step 2]",
     )
-    parser_generate.add_argument("--repo", "-o", help="Output repo directory", default="repo")
+    parser_generate.add_argument(
+        "--repo", "-o", help="Output repo directory", default="repo"
+    )
     parser_generate.add_argument(
         "--clean", action="store_true", help="Clean output repo before generating"
     )
     parser_generate.add_argument(
-        "--no-new-versions", action="store_true", help="Do not add new versions when possible"
+        "--no-new-versions",
+        action="store_true",
+        help="Do not add new versions when possible",
     )
     parser_generate.add_argument(
         "--requirements", help="requirements.txt file", default="spack_requirements.txt"
@@ -1173,12 +1245,17 @@ def main():
         help="Include new versions. This generates an additional plain requirement `name` apart "
         "from `name ==version` for all versions in Spack",
     )
-    new_group.add_argument("--new-from-file", help="List the packages that need to be bumped")
+    new_group.add_argument(
+        "--new-from-file", help="List the packages that need to be bumped"
+    )
     parser_export = subparsers.add_parser(
-        "export", help="Update Spack's repo with the generated package.py files [step 3]"
+        "export",
+        help="Update Spack's repo with the generated package.py files [step 3]",
     )
     parser_export.add_argument(
-        "--input", help="Input repo that contains repo.yaml (default: ./repo)", default="repo"
+        "--input",
+        help="Input repo that contains repo.yaml (default: ./repo)",
+        default="repo",
     )
     parser_export.add_argument(
         "--output",
@@ -1219,21 +1296,27 @@ def main():
     elif args.command == "info":
         print(
             "Total packages:",
-            sqlite_cursor.execute("SELECT COUNT(DISTINCT name) FROM versions").fetchone()[0],
+            sqlite_cursor.execute(
+                "SELECT COUNT(DISTINCT name) FROM versions"
+            ).fetchone()[0],
         )
         print(
-            "Total versions:", sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0]
+            "Total versions:",
+            sqlite_cursor.execute("SELECT COUNT(*) FROM versions").fetchone()[0],
         )
 
     elif args.command == "generate":
         # Parse requirements.txt
         with open(args.requirements) as f:
             requirements = [
-                Requirement(v) for line in f.readlines() if (v := line.split("#")[0].strip())
+                Requirement(v)
+                for line in f.readlines()
+                if (v := line.split("#")[0].strip())
             ]
 
         queue = [
-            (_normalized_name(r.name), r.specifier, frozenset(r.extras), 0) for r in requirements
+            (_normalized_name(r.name), r.specifier, frozenset(r.extras), 0)
+            for r in requirements
         ]
 
         graph = _generate(queue, sqlite_cursor, args.no_new_versions)
@@ -1260,7 +1343,10 @@ def main():
             package_dir.mkdir(parents=True, exist_ok=True)
             with open(package_dir / "package.py", "w") as f:
                 f.write(HEADER)
-                print(f"class {pkg_name_to_class_name(spack_name)}(PythonPackage):", file=f)
+                print(
+                    f"class {pkg_name_to_class_name(spack_name)}(PythonPackage):",
+                    file=f,
+                )
                 _print_package(name, node, f)
 
 

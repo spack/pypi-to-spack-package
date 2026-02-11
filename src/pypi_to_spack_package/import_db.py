@@ -147,7 +147,9 @@ def import_distributions(path="pypi-distributions"):
                     (
                         data["normalized_name"],
                         data["version"],
-                        json.dumps(data.get("requires_dist", []), separators=(",", ":")),
+                        json.dumps(
+                            data.get("requires_dist", []), separators=(",", ":")
+                        ),
                         data.get("requires_python", ""),
                         bytearray.fromhex(data.get("sha256_digest", "")),
                         data["path"],

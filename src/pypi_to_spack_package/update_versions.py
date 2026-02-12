@@ -65,8 +65,12 @@ def get_distribution_metadata(cursor, package_name, version_str):
     return None
 
 
-def find_updates(db_path="data.db"):
+def find_updates(db_path="data.db", patch_only=False):
     """Find Python packages that have newer versions available on PyPI
+
+    Args:
+        db_path: Path to SQLite database
+        patch_only: If True, only allow patch version bumps (e.g., 1.2.3 -> 1.2.7)
 
     Returns: list of package update dicts
     """
@@ -83,8 +87,10 @@ def find_updates(db_path="data.db"):
     cursor = conn.cursor()
 
     # Get all Python packages from Spack
-    print("Loading Spack Python packages that don't depend on c, cxx, fortran, rust...")
     disallowed_deps = {"rust", "c", "cxx", "fortran"}
+    print(
+        f"Loading Spack Python packages that don't depend on {', '.join(disallowed_deps)}..."
+    )
     python_packages = [
         pkg.name
         for pkg in spack.repo.PATH.all_package_classes()
@@ -138,6 +144,15 @@ def find_updates(db_path="data.db"):
 
             # Only check if newer than Spack version
             if pypi_latest > spack_v:
+                # If patch_only mode, ensure major and minor versions match
+                if patch_only:
+                    if (
+                        pypi_latest.major != spack_v.major
+                        or pypi_latest.minor != spack_v.minor
+                    ):
+                        up_to_date.append(spack_name)
+                        continue
+
                 # Check if metadata matches
                 spack_metadata = get_distribution_metadata(
                     cursor, pypi_name, str(spack_v)
@@ -492,6 +507,11 @@ def main():
         action="store_true",
         help="Allow adding versions where Python requirements changed (default: only add versions with identical Python requirements)",
     )
+    parser.add_argument(
+        "--patch-only",
+        action="store_true",
+        help="Only allow patch version bumps (e.g., 1.2.3 -> 1.2.7, but not 1.2.3 -> 1.3.0 or 2.0.0)",
+    )
 
     args = parser.parse_args()
 
@@ -507,7 +527,7 @@ def main():
             packages = json.load(f)
     else:
         # No input file - find updates first
-        packages = find_updates(args.db)
+        packages = find_updates(args.db, patch_only=args.patch_only)
 
         if not packages:
             print("No updates found.")

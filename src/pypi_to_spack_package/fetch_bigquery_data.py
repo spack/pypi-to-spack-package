@@ -42,7 +42,8 @@ SELECT
   x.requires_dist,
   x.requires_python,
   x.sha256_digest,
-  x.path
+  x.path,
+  x.upload_time
 
 FROM `bigquery-public-data.pypi.distribution_metadata` AS x
 
@@ -87,7 +88,8 @@ AS
 
 SELECT
   REGEXP_REPLACE(LOWER(name), "[-_.]+", "-") AS normalized_name,
-  version
+  version,
+  MAX(upload_time) AS upload_time
 FROM `bigquery-public-data.pypi.distribution_metadata`
 {upload_time_filter}
 GROUP BY normalized_name, version

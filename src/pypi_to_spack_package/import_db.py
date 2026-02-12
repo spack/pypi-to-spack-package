@@ -37,7 +37,8 @@ version TEXT NOT NULL,
 requires_dist TEXT,
 requires_python TEXT,
 sha256 BLOB(32) NOT NULL,
-path TEXT NOT NULL
+path TEXT NOT NULL,
+upload_time TEXT
 )
 """
 )
@@ -53,7 +54,8 @@ c.execute(
 CREATE TABLE IF NOT EXISTS versions
 (
 name TEXT NOT NULL,
-version TEXT NOT NULL
+version TEXT NOT NULL,
+upload_time TEXT
 )
 """
 )
@@ -68,9 +70,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS versions_by_name ON versions (name, version)
 def insert_versions(entries):
     c.executemany(
         """
-    INSERT INTO versions (name, version)
-    VALUES (?, ?)
-    ON CONFLICT(name, version) DO NOTHING
+    INSERT INTO versions (name, version, upload_time)
+    VALUES (?, ?, ?)
+    ON CONFLICT(name, version) DO UPDATE SET
+    upload_time = excluded.upload_time
     """,
         entries,
     )
@@ -79,13 +82,14 @@ def insert_versions(entries):
 def insert_distributions(entries):
     c.executemany(
         """
-    INSERT INTO distributions (name, version, requires_dist, requires_python, sha256, path)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO distributions (name, version, requires_dist, requires_python, sha256, path, upload_time)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(name, version) DO UPDATE SET
     requires_dist = excluded.requires_dist,
     requires_python = excluded.requires_python,
     sha256 = excluded.sha256,
-    path = excluded.path
+    path = excluded.path,
+    upload_time = excluded.upload_time
     """,
         entries,
     )
@@ -108,7 +112,13 @@ def import_versions(path="pypi-versions"):
             for line in lines:
                 i += 1
                 data = json.loads(line)
-                entries.append((data["normalized_name"], data["version"]))
+                entries.append(
+                    (
+                        data["normalized_name"],
+                        data["version"],
+                        data.get("upload_time", ""),
+                    )
+                )
 
                 if i % 10000 == 0:
                     insert_versions(entries)
@@ -153,6 +163,7 @@ def import_distributions(path="pypi-distributions"):
                         data.get("requires_python", ""),
                         bytearray.fromhex(data.get("sha256_digest", "")),
                         data["path"],
+                        data.get("upload_time", ""),
                     )
                 )
 

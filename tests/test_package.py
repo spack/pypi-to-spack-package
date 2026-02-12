@@ -14,8 +14,12 @@ def test_best_lowerbound():
     assert lowerbound(SVersion("1.0"), SVersion("1.1.1")) == SVersion("1.1")
     assert lowerbound(SVersion("1.0"), SVersion("1.0.1")) == SVersion("1.0.1")
     assert lowerbound(SVersion("1.0alpha1"), SVersion("1.0")) == SVersion("1.0")
-    assert lowerbound(SVersion("1.0alpha1"), SVersion("1.0beta2")) == SVersion("1.0beta2")
-    assert lowerbound(SVersion("4.5.1"), SVersion("4.5.2-beta1")) == SVersion("4.5.2-beta1")
+    assert lowerbound(SVersion("1.0alpha1"), SVersion("1.0beta2")) == SVersion(
+        "1.0beta2"
+    )
+    assert lowerbound(SVersion("4.5.1"), SVersion("4.5.2-beta1")) == SVersion(
+        "4.5.2-beta1"
+    )
 
 
 def test_best_upperbound():
@@ -46,7 +50,9 @@ def test_condensed_versions():
     condense = package._condensed_version_list
     assert condense(_pversions("2.0", "4.0", "5.0"), all_versions) == ver(["2,4:"])
     assert condense(_pversions("2.0", "4.0"), all_versions) == ver(["2,4"])
-    assert condense(_pversions("2.0", "3.0", "3.1", "4.0"), all_versions) == ver(["2:4"])
+    assert condense(_pversions("2.0", "3.0", "3.1", "4.0"), all_versions) == ver(
+        ["2:4"]
+    )
     assert condense(_pversions("1.0", "2.0"), all_versions) == ver([":2"])
     assert condense(all_versions, all_versions) == ver([":"])
 
@@ -63,7 +69,10 @@ def test_condensed_versions_with_prereleases():
     [
         ("python_version < '3.9'", [Spec("^python@:3.8")]),
         ("python_version < '3.9' and extra == 'foo'", [Spec("+foo ^python@:3.8")]),
-        ("python_version < '3.9' or extra == 'foo'", [Spec("+foo"), Spec("^python@:3.8")]),
+        (
+            "python_version < '3.9' or extra == 'foo'",
+            [Spec("+foo"), Spec("^python@:3.8")],
+        ),
         (
             "python_version <= '3.9' and python_version > '3.8.4' or extra == 'foo' and extra == 'bar'",
             [Spec("+bar+foo"), Spec("^python@3.8.5:3.9.0")],
@@ -76,7 +85,10 @@ def test_condensed_versions_with_prereleases():
         ("python_version >= '3.6'", True),
         ("python_version >= '3.6' and extra == 'foo'", [Spec("+foo")]),
         ("python_version >= '3.6' or extra == 'foo'", True),
-        ("python_version >= '3.6' and python_version <= '3.10'", [Spec("^python@:3.10.0")]),
+        (
+            "python_version >= '3.6' and python_version <= '3.10'",
+            [Spec("^python@:3.10.0")],
+        ),
     ],
 )
 def test_marker(marker, expected):

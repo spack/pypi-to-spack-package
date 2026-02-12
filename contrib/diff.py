@@ -38,14 +38,20 @@ def to_version_list(versions, all_versions):
 
 parser = argparse.ArgumentParser()
 sub = parser.add_subparsers(required=True, dest="command")
-sub.add_parser("before", help="Generate before.json (checkout commit before changes yourself)")
-sub.add_parser("after", help="Generate after.json (checkout commit after changes yourself)")
+sub.add_parser(
+    "before", help="Generate before.json (checkout commit before changes yourself)"
+)
+sub.add_parser(
+    "after", help="Generate after.json (checkout commit after changes yourself)"
+)
 sub.add_parser("diff", help="Diff before.json and after.json")
 
 args = parser.parse_args()
 
 if args.command in ("before", "after"):
-    possible_versions: Dict[str, Dict[StandardVersion, Dict[str, List[StandardVersion]]]] = {}
+    possible_versions: Dict[
+        str, Dict[StandardVersion, Dict[str, List[StandardVersion]]]
+    ] = {}
     pkgs = spack.repo.PATH.all_package_names()
     print()
     for i, name in enumerate(pkgs):
@@ -77,7 +83,9 @@ if args.command in ("before", "after"):
                         deps_for_version[dep_name] = list(child.package.versions.keys())
                     # filter matching versions
                     deps_for_version[dep_name] = [
-                        v for v in deps_for_version[dep_name] if v.satisfies(dep.spec.versions)
+                        v
+                        for v in deps_for_version[dep_name]
+                        if v.satisfies(dep.spec.versions)
                     ]
 
             possible_versions[name][str(v)] = {
@@ -103,8 +111,12 @@ elif args.command == "diff":
         a_pkg = a[name]
         b_pkg = b[name]
 
-        versions_in_a = set(StandardVersion.from_string(x) for x in a_pkg.keys()) - inf_versions
-        versions_in_b = set(StandardVersion.from_string(x) for x in b_pkg.keys()) - inf_versions
+        versions_in_a = (
+            set(StandardVersion.from_string(x) for x in a_pkg.keys()) - inf_versions
+        )
+        versions_in_b = (
+            set(StandardVersion.from_string(x) for x in b_pkg.keys()) - inf_versions
+        )
 
         change_to_version = defaultdict(list)
 
@@ -122,10 +134,14 @@ elif args.command == "diff":
 
         for v in sorted(versions_in_a & versions_in_b):
             deps_a = next(
-                val for key, val in a_pkg.items() if StandardVersion.from_string(key) == v
+                val
+                for key, val in a_pkg.items()
+                if StandardVersion.from_string(key) == v
             )
             deps_b = next(
-                val for key, val in b_pkg.items() if StandardVersion.from_string(key) == v
+                val
+                for key, val in b_pkg.items()
+                if StandardVersion.from_string(key) == v
             )
 
             deps_in_a = set(deps_a.keys())
@@ -148,23 +164,33 @@ elif args.command == "diff":
                 b_v = set(StandardVersion.from_string(v) for v in deps_b[dep])
 
                 if a_v != b_v:
-                    all_versions = sorted(spack.repo.PATH.get_pkg_class(dep).versions.keys())
+                    all_versions = sorted(
+                        spack.repo.PATH.get_pkg_class(dep).versions.keys()
+                    )
                     a_min_b = sorted(a_v - b_v)
                     if a_min_b:
                         try:
                             version_list = to_version_list(a_min_b, all_versions)
                         except Exception:
                             version_list = ",".join(str(x) for x in a_min_b)
-                        version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
-                        changes_for_version.append(f"disallowed `^{dep}{version_specifier}`")
+                        version_specifier = (
+                            "" if str(version_list) == ":" else f"@{version_list}"
+                        )
+                        changes_for_version.append(
+                            f"disallowed `^{dep}{version_specifier}`"
+                        )
                     b_min_a = sorted(b_v - a_v)
                     if b_min_a:
                         try:
                             version_list = to_version_list(b_min_a, all_versions)
                         except Exception:
                             version_list = ",".join(str(x) for x in b_min_a)
-                        version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
-                        changes_for_version.append(f"allowed `^{dep}{version_specifier}`")
+                        version_specifier = (
+                            "" if str(version_list) == ":" else f"@{version_list}"
+                        )
+                        changes_for_version.append(
+                            f"allowed `^{dep}{version_specifier}`"
+                        )
 
             if changes_for_version:
                 change_to_version["\n".join(changes_for_version)].append(v)
@@ -178,13 +204,20 @@ elif args.command == "diff":
                 continue
             try:
                 version_list = to_version_list(
-                    versions, sorted(spack.repo.PATH.get_pkg_class(name).versions.keys())
+                    versions,
+                    sorted(spack.repo.PATH.get_pkg_class(name).versions.keys()),
                 )
             except Exception as e:
                 version_list = ",".join(str(v) for v in versions)
             for line in changes_for_version.split("\n"):
-                diff = "-" if line.startswith("deleted") or line.startswith("allowed") else "+"
-                version_specifier = "" if str(version_list) == ":" else f"@{version_list}"
+                diff = (
+                    "-"
+                    if line.startswith("deleted") or line.startswith("allowed")
+                    else "+"
+                )
+                version_specifier = (
+                    "" if str(version_list) == ":" else f"@{version_list}"
+                )
                 print(f"{diff} `{name}{version_specifier}` {line}")
         if change_to_version:
             print()

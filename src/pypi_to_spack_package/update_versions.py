@@ -11,7 +11,10 @@ import os
 import re
 import sqlite3
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+
+VERY_OLD = datetime.now() - timedelta(days=365 * 3)  # 3 years ago
 
 import aiohttp
 
@@ -34,23 +37,32 @@ CACHE_DIR.mkdir(exist_ok=True)
 
 
 def get_pypi_versions(cursor, package_name):
-    """Get all versions of a PyPI package from data.db"""
+    """Get all versions of a PyPI package from data.db
+
+    Returns: (versions_list, latest_upload_time)
+    """
     query = cursor.execute(
-        "SELECT DISTINCT version FROM versions WHERE name = ?",
+        "SELECT version, upload_time FROM versions WHERE name = ?",
         (package_name,),
     )
     versions = []
-    for (version_str,) in query:
+    version_times = {}  # Map version to upload_time
+    for version_str, upload_time in query:
         try:
             v = pv.parse(version_str)
             # Skip pre-releases, dev, post, local versions
             if v.pre is None and v.dev is None and v.post is None and v.local is None:
                 versions.append(v)
+                version_times[v] = upload_time
         except pv.InvalidVersion:
             continue
     # Sort versions in descending order using semantic versioning
     versions.sort(reverse=True)
-    return versions
+
+    # Get upload_time of latest version
+    latest_upload_time = version_times.get(versions[0]) if versions else None
+
+    return (versions, latest_upload_time)
 
 
 def get_distribution_metadata(cursor, package_name, version_str):
@@ -65,12 +77,13 @@ def get_distribution_metadata(cursor, package_name, version_str):
     return None
 
 
-def find_updates(db_path="data.db", patch_only=False):
+def find_updates(db_path="data.db", patch_only=False, min_days_since_release=None):
     """Find Python packages that have newer versions available on PyPI
 
     Args:
         db_path: Path to SQLite database
         patch_only: If True, only allow patch version bumps (e.g., 1.2.3 -> 1.2.7)
+        min_days_since_release: If set, only include packages with latest release within this many days
 
     Returns: list of package update dicts
     """
@@ -106,6 +119,8 @@ def find_updates(db_path="data.db", patch_only=False):
     errors = []
     not_found = []
     up_to_date = []
+    very_old = []
+    too_old = []  # Packages filtered out by min_days_since_release
 
     for i, spack_name in enumerate(sorted(python_packages), 1):
         if i % 100 == 0:
@@ -134,13 +149,41 @@ def find_updates(db_path="data.db", patch_only=False):
                 continue
 
             # Get versions from PyPI
-            pypi_versions = get_pypi_versions(cursor, pypi_name)
+            pypi_versions, latest_upload_time = get_pypi_versions(cursor, pypi_name)
             if not pypi_versions:
                 not_found.append(spack_name)
                 continue
 
             # Find latest PyPI version
             pypi_latest = pypi_versions[0]
+
+            # Check if package meets minimum recency requirement
+            if min_days_since_release and latest_upload_time:
+                try:
+                    upload_dt = datetime.fromisoformat(
+                        latest_upload_time.replace("Z", "+00:00").split(".")[0]
+                    )
+                    if upload_dt.tzinfo is not None:
+                        upload_dt = upload_dt.replace(tzinfo=None)
+                    min_date = datetime.now() - timedelta(days=min_days_since_release)
+                    if upload_dt < min_date:
+                        too_old.append(spack_name)
+                        continue
+                except:
+                    pass
+
+            # Warn if latest version is older than 3 years
+            if latest_upload_time:
+                try:
+                    upload_dt = datetime.fromisoformat(
+                        latest_upload_time.replace("Z", "+00:00").split(".")[0]
+                    )
+                    if upload_dt.tzinfo is not None:
+                        upload_dt = upload_dt.replace(tzinfo=None)
+                    if upload_dt < VERY_OLD:
+                        very_old.append((upload_dt.date(), spack_name, pypi_latest))
+                except:
+                    pass
 
             # Only check if newer than Spack version
             if pypi_latest > spack_v:
@@ -237,6 +280,23 @@ def find_updates(db_path="data.db", patch_only=False):
         if len(python_changed_updates) > 20:
             print(f"... and {len(python_changed_updates) - 20} more")
 
+    for upload_dt, spack_name, pypi_latest in sorted(very_old, reverse=True):
+        # Calculate relative age
+        days_old = (datetime.now().date() - upload_dt).days
+        years = days_old // 365
+        months = (days_old % 365) // 30
+
+        if years > 0 and months > 0:
+            age_str = f"{years} year{'s' if years > 1 else ''}, {months} month{'s' if months > 1 else ''} old"
+        elif years > 0:
+            age_str = f"{years} year{'s' if years > 1 else ''} old"
+        else:
+            age_str = f"{months} month{'s' if months > 1 else ''} old"
+
+        print(
+            f"WARNING: {spack_name} latest version {pypi_latest} is {age_str} ({upload_dt})"
+        )
+
     if errors:
         print(f"\n{'=' * 100}")
         print(f"ERRORS: {len(errors)}")
@@ -257,6 +317,11 @@ def find_updates(db_path="data.db", patch_only=False):
     print(f"  - {len(python_changed_updates)} with Python requirement changes only")
     print(f"* {len(not_found)} packages were not found in the database")
     print(f"* {len(up_to_date)} versions are up to date")
+    if min_days_since_release:
+        print(
+            f"* {len(too_old)} packages filtered (no release within {min_days_since_release} days)"
+        )
+    print(f"* {len(very_old)} packages have latest version older than 3 years")
     print()
 
     conn.close()
@@ -512,6 +577,12 @@ def main():
         action="store_true",
         help="Only allow patch version bumps (e.g., 1.2.3 -> 1.2.7, but not 1.2.3 -> 1.3.0 or 2.0.0)",
     )
+    parser.add_argument(
+        "--min-days-since-release",
+        type=int,
+        default=365,
+        help="Only update packages with a release within this many days (default: 365, set to 0 to disable)",
+    )
 
     args = parser.parse_args()
 
@@ -527,7 +598,12 @@ def main():
             packages = json.load(f)
     else:
         # No input file - find updates first
-        packages = find_updates(args.db, patch_only=args.patch_only)
+        min_days = (
+            args.min_days_since_release if args.min_days_since_release > 0 else None
+        )
+        packages = find_updates(
+            args.db, patch_only=args.patch_only, min_days_since_release=min_days
+        )
 
         if not packages:
             print("No updates found.")

@@ -14,8 +14,6 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VERY_OLD = datetime.now() - timedelta(days=365 * 3)  # 3 years ago
-
 import aiohttp
 
 try:
@@ -32,8 +30,11 @@ except ImportError:
     sys.exit(1)
 
 
+VERY_OLD = datetime.now() - timedelta(days=365 * 3)  # 3 years ago
+DISALLOWED_DEPS = {"c", "cxx", "fortran", "rust"}
 CACHE_DIR = Path("shasums")
 CACHE_DIR.mkdir(exist_ok=True)
+
 
 
 def get_pypi_versions(cursor, package_name):
@@ -100,15 +101,14 @@ def find_updates(db_path="data.db", patch_only=False, min_days_since_release=Non
     cursor = conn.cursor()
 
     # Get all Python packages from Spack
-    disallowed_deps = {"rust", "c", "cxx", "fortran"}
     print(
-        f"Loading Spack Python packages that don't depend on {', '.join(disallowed_deps)}..."
+        f"Loading Spack Python packages that don't depend on {', '.join(DISALLOWED_DEPS)}..."
     )
     python_packages = [
         pkg.name
         for pkg in spack.repo.PATH.all_package_classes()
         if pkg.name.startswith("py-")
-        and disallowed_deps.isdisjoint(
+        and DISALLOWED_DEPS.isdisjoint(
             itertools.chain.from_iterable(pkg.dependencies.values())
         )
     ]
@@ -222,6 +222,7 @@ def find_updates(db_path="data.db", patch_only=False, min_days_since_release=Non
                                 "old_python": spack_requires_python or "",
                                 "new_python": pypi_requires_python or "",
                                 "python_requirements_changed": False,
+                                "upload_time": latest_upload_time,
                             }
                         )
                     # Track packages with same requires_dist but different requires_python
@@ -235,6 +236,7 @@ def find_updates(db_path="data.db", patch_only=False, min_days_since_release=Non
                                 "old_python": spack_requires_python or "",
                                 "new_python": pypi_requires_python or "",
                                 "python_requirements_changed": True,
+                                "upload_time": latest_upload_time,
                             }
                         )
                     else:
@@ -755,7 +757,19 @@ def main():
 
             if success:
                 add_success_count += 1
-                print(f"\r✓ {spack_name:45} {old_version} -> {new_version}")
+                # Format upload date if available
+                upload_info = ""
+                if pkg.get("upload_time"):
+                    try:
+                        upload_dt = datetime.fromisoformat(
+                            pkg["upload_time"].replace("Z", "+00:00").split(".")[0]
+                        )
+                        upload_info = f" (released {upload_dt.date()})"
+                    except:
+                        pass
+                print(
+                    f"\r✓ {spack_name:45} {old_version} -> {new_version}{upload_info}"
+                )
             else:
                 add_error_count += 1
                 add_errors.append((spack_name, message))
